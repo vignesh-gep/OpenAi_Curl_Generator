@@ -256,11 +256,11 @@ function convertMessages(inputMessages, toolNameMap) {
             continue;
         }
 
-        const role = allowedRoles.has(msg.role) ? msg.role : null;
+        const isAllowedRole = allowedRoles.has(msg.role);
 
         // Convert internal tool/node response roles into valid OpenAI "tool" messages
         // when they are likely responses to a prior assistant tool call.
-        if (!role && pendingToolCalls.length > 0) {
+        if (!isAllowedRole && pendingToolCalls.length > 0) {
             const pending = pendingToolCalls.shift();
             convertedMessages.push({
                 role: 'tool',
@@ -275,9 +275,12 @@ function convertMessages(inputMessages, toolNameMap) {
             continue;
         }
 
-        // Fallback for unknown roles: keep as assistant text to preserve history context.
+        // For unknown roles with no pending tool call, convert to assistant
+        // This handles random internal node names like "suppliergridv10025"
+        const finalRole = isAllowedRole ? msg.role : 'assistant';
+        
         convertedMessages.push({
-            role: role || 'assistant',
+            role: finalRole,
             content: content
         });
     }
