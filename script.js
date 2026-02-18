@@ -190,13 +190,19 @@ function convertMessageContent(content) {
 /**
  * Convert messages array from KeyStudio format to OpenAI format
  * 
- * SIMPLE ROLE MAPPING:
+ * ROLE MAPPING:
  * - system, user, assistant, tool, function, developer → keep as-is
- * - Any other role (get_contract_details, suppliergridv10025, etc.) → convert to "assistant"
+ * - Unknown role after assistant with tool_calls → convert to "tool" with matching tool_call_id
+ * - Unknown role with no pending tool call → convert to "assistant"
+ * 
+ * OpenAI REQUIREMENT: Every tool_call must have a matching tool response!
  */
 function convertMessages(inputMessages, toolNameMap) {
     const allowedRoles = new Set(['system', 'user', 'assistant', 'tool', 'function', 'developer']);
     const convertedMessages = [];
+    
+    // Queue to track pending tool_call_ids that need responses
+    const pendingToolCallIds = [];
 
     for (let i = 0; i < inputMessages.length; i += 1) {
         const msg = inputMessages[i];
@@ -239,6 +245,9 @@ function convertMessages(inputMessages, toolNameMap) {
                 const finalName = toolNameMap[rawName] || rawName;
                 const argumentsString = typeof rawArgs === 'string' ? rawArgs : JSON.stringify(rawArgs || {});
 
+                // Track this tool_call_id - it needs a response!
+                pendingToolCallIds.push(callId);
+
                 return {
                     id: callId,
                     type: 'function',
@@ -257,15 +266,28 @@ function convertMessages(inputMessages, toolNameMap) {
             continue;
         }
 
-        // Skip empty messages
+        // Check if this is a valid role
+        const isValidRole = allowedRoles.has(msg.role);
+
+        // If unknown role AND we have pending tool calls → this is a tool response
+        if (!isValidRole && pendingToolCallIds.length > 0) {
+            const toolCallId = pendingToolCallIds.shift(); // Get the first pending ID
+            convertedMessages.push({
+                role: 'tool',
+                tool_call_id: toolCallId,
+                content: content || ''
+            });
+            continue;
+        }
+
+        // Skip empty messages (but only if not a tool response)
         if (!content || content.trim() === '') {
             continue;
         }
 
-        // SIMPLE ROLE MAPPING:
-        // If role is valid → keep it
-        // If role is unknown (any random string) → convert to "assistant"
-        const finalRole = allowedRoles.has(msg.role) ? msg.role : 'assistant';
+        // For valid roles → keep as-is
+        // For unknown roles with no pending tool call → convert to "assistant"
+        const finalRole = isValidRole ? msg.role : 'assistant';
         
         convertedMessages.push({
             role: finalRole,
