@@ -76,6 +76,39 @@ document.addEventListener('DOMContentLoaded', function() {
  * }
  */
 function convertTools(inputTools) {
+    const normalizeSchema = (schemaNode) => {
+        if (!schemaNode || typeof schemaNode !== 'object') {
+            return schemaNode;
+        }
+
+        const normalized = { ...schemaNode };
+
+        if (normalized.type === 'object') {
+            const props = normalized.properties && typeof normalized.properties === 'object'
+                ? normalized.properties
+                : {};
+            const propKeys = Object.keys(props);
+
+            // Guardrail: object schema with no properties and additionalProperties=false
+            // rejects every real object payload (common source of tool schema failures).
+            if (propKeys.length === 0 && normalized.additionalProperties === false) {
+                normalized.additionalProperties = true;
+            }
+
+            const normalizedProps = {};
+            for (const key of propKeys) {
+                normalizedProps[key] = normalizeSchema(props[key]);
+            }
+            normalized.properties = normalizedProps;
+        }
+
+        if (normalized.type === 'array' && normalized.items) {
+            normalized.items = normalizeSchema(normalized.items);
+        }
+
+        return normalized;
+    };
+
     return inputTools.map(tool => {
         // Check if already in OpenAI format (type === "function" and has function object)
         if (tool.type === 'function' && tool.function) {
@@ -89,7 +122,9 @@ function convertTools(inputTools) {
         // Extract parameters from config.schema or use empty object
         let parameters = { type: 'object', properties: {}, required: [] };
         if (tool.config && tool.config.schema) {
-            parameters = tool.config.schema;
+            parameters = normalizeSchema(tool.config.schema);
+        } else if (tool.function && tool.function.parameters) {
+            parameters = normalizeSchema(tool.function.parameters);
         }
         
         return {
@@ -101,6 +136,32 @@ function convertTools(inputTools) {
             }
         };
     });
+}
+
+/**
+ * Build a tool-name resolver map.
+ * Maps both internal tool names and aliases to the final OpenAI function name.
+ */
+function buildToolNameMap(inputTools) {
+    const map = {};
+
+    for (const tool of inputTools) {
+        // Already OpenAI format
+        if (tool.type === 'function' && tool.function && tool.function.name) {
+            map[tool.function.name] = tool.function.name;
+            continue;
+        }
+
+        const finalName = tool.alias || tool.name || 'unknown_function';
+        if (tool.name) {
+            map[tool.name] = finalName;
+        }
+        if (tool.alias) {
+            map[tool.alias] = finalName;
+        }
+    }
+
+    return map;
 }
 
 /**
@@ -129,23 +190,98 @@ function convertMessageContent(content) {
 /**
  * Convert messages array from KeyStudio format to OpenAI format
  */
-function convertMessages(inputMessages) {
+function convertMessages(inputMessages, toolNameMap) {
+    const allowedRoles = new Set(['system', 'user', 'assistant', 'developer', 'tool', 'function']);
     const convertedMessages = [];
-    
-    for (const msg of inputMessages) {
+    const pendingToolCalls = [];
+
+    for (let i = 0; i < inputMessages.length; i += 1) {
+        const msg = inputMessages[i];
         const content = convertMessageContent(msg.content);
-        
-        // Skip empty messages
+
+        // Normalize assistant tool_calls into OpenAI format.
+        if (msg.role === 'assistant' && Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) {
+            const normalizedToolCalls = msg.tool_calls.map((call, idx) => {
+                const callId = call.id || `call_${Date.now()}_${i}_${idx}`;
+
+                let rawName = '';
+                let rawArgs = {};
+
+                // KeyStudio style: { id, name, args }
+                if (call.name) {
+                    rawName = call.name;
+                    rawArgs = call.args || {};
+                }
+
+                // OpenAI-like style: { id, function: { name, arguments }, type }
+                if (call.function && call.function.name) {
+                    rawName = call.function.name;
+                    if (typeof call.function.arguments === 'string') {
+                        rawArgs = call.function.arguments;
+                    } else {
+                        rawArgs = call.function.arguments || {};
+                    }
+                }
+
+                // Heuristic: if internal node name was used, try to infer actual tool name
+                // from the immediate next message: "Executed **tool_name** ..."
+                if (!toolNameMap[rawName] && inputMessages[i + 1]) {
+                    const nextContent = convertMessageContent(inputMessages[i + 1].content);
+                    const executedMatch = nextContent.match(/Executed \*\*([^*]+)\*\*/i);
+                    if (executedMatch && executedMatch[1]) {
+                        rawName = executedMatch[1].trim();
+                    }
+                }
+
+                const finalName = toolNameMap[rawName] || rawName;
+                const argumentsString = typeof rawArgs === 'string' ? rawArgs : JSON.stringify(rawArgs || {});
+
+                pendingToolCalls.push({ id: callId, name: finalName });
+
+                return {
+                    id: callId,
+                    type: 'function',
+                    function: {
+                        name: finalName,
+                        arguments: argumentsString
+                    }
+                };
+            });
+
+            convertedMessages.push({
+                role: 'assistant',
+                content: content || '',
+                tool_calls: normalizedToolCalls
+            });
+            continue;
+        }
+
+        const role = allowedRoles.has(msg.role) ? msg.role : null;
+
+        // Convert internal tool/node response roles into valid OpenAI "tool" messages
+        // when they are likely responses to a prior assistant tool call.
+        if (!role && pendingToolCalls.length > 0) {
+            const pending = pendingToolCalls.shift();
+            convertedMessages.push({
+                role: 'tool',
+                tool_call_id: pending.id,
+                content: content || ''
+            });
+            continue;
+        }
+
+        // Skip messages that become empty and have no special payload.
         if (!content || content.trim() === '') {
             continue;
         }
-        
+
+        // Fallback for unknown roles: keep as assistant text to preserve history context.
         convertedMessages.push({
-            role: msg.role,
+            role: role || 'assistant',
             content: content
         });
     }
-    
+
     return convertedMessages;
 }
 
@@ -247,9 +383,10 @@ function generateCurl() {
         
         // Convert tools from KeyStudio format to OpenAI format
         const convertedTools = convertTools(inputTools);
+        const toolNameMap = buildToolNameMap(inputTools);
         
         // Convert messages to OpenAI format
-        const convertedMessages = convertMessages(inputMessages);
+        const convertedMessages = convertMessages(inputMessages, toolNameMap);
         
         if (convertedMessages.length === 0) {
             showError('No valid messages found after conversion. Please check your input.');
