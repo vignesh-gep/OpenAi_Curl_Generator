@@ -44,6 +44,14 @@ function initTheme() {
 // Initialize theme on page load
 document.addEventListener('DOMContentLoaded', initTheme);
 
+/**
+ * Toggle collapsible output sections
+ */
+function toggleCollapsible(headerElement) {
+    const card = headerElement.closest('.output-card');
+    card.classList.toggle('expanded');
+}
+
 // ============================================
 // VALIDATION
 // ============================================
@@ -559,14 +567,14 @@ function copyToClipboard(elementId) {
  */
 function toggleApiKeyVisibility() {
     const input = document.getElementById('apiKey');
-    const btn = document.querySelector('.toggle-visibility');
+    const eyeIcon = document.getElementById('eyeIcon');
     
     if (input.type === 'password') {
         input.type = 'text';
-        btn.textContent = '🙈';
+        eyeIcon.textContent = 'Hide';
     } else {
         input.type = 'password';
-        btn.textContent = '👁';
+        eyeIcon.textContent = 'Show';
     }
 }
 
