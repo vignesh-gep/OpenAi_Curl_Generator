@@ -93,8 +93,16 @@ document.addEventListener('DOMContentLoaded', function() {
     const toolsInput = document.getElementById('toolsInput');
     const messagesInput = document.getElementById('messagesInput');
     
-    toolsInput.addEventListener('input', () => validateJSON('toolsInput', 'toolsValidation'));
-    messagesInput.addEventListener('input', () => validateJSON('messagesInput', 'messagesValidation'));
+    toolsInput.addEventListener('input', () => {
+        validateJSON('toolsInput', 'toolsValidation');
+        // Hide error when user starts typing
+        document.getElementById('errorSection').style.display = 'none';
+    });
+    messagesInput.addEventListener('input', () => {
+        validateJSON('messagesInput', 'messagesValidation');
+        // Hide error when user starts typing
+        document.getElementById('errorSection').style.display = 'none';
+    });
 });
 
 // ============================================
@@ -590,6 +598,8 @@ function formatJSON(inputId) {
     try {
         const parsed = JSON.parse(value);
         input.value = JSON.stringify(parsed, null, 2);
+        // Hide any previous error
+        document.getElementById('errorSection').style.display = 'none';
         showToast('JSON formatted!');
     } catch (e) {
         showError('Cannot format: Invalid JSON');
