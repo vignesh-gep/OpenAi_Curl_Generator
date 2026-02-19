@@ -62,9 +62,65 @@ function toggleReasoningDropdown() {
     if (checkbox.checked) {
         dropdown.disabled = false;
         dropdown.style.opacity = '1';
+        // Check for temperature/top_p conflict
+        checkReasoningConflict();
     } else {
         dropdown.disabled = true;
         dropdown.style.opacity = '0.5';
+        hideReasoningWarning();
+    }
+}
+
+/**
+ * Check for reasoning + temperature/top_p conflict and show warning
+ */
+function checkReasoningConflict() {
+    const reasoningEnabled = document.getElementById('reasoningEnabled').checked;
+    const temperature = parseFloat(document.getElementById('temperature').value);
+    const topP = parseFloat(document.getElementById('topP').value);
+    
+    // GPT-5.2 doesn't support temperature/top_p when reasoning_effort is enabled
+    if (reasoningEnabled && (temperature !== 1 || topP !== 1)) {
+        showReasoningWarning();
+    } else {
+        hideReasoningWarning();
+    }
+}
+
+/**
+ * Show reasoning conflict warning
+ */
+function showReasoningWarning() {
+    let warningEl = document.getElementById('reasoningWarning');
+    
+    if (!warningEl) {
+        warningEl = document.createElement('div');
+        warningEl.id = 'reasoningWarning';
+        warningEl.className = 'reasoning-warning';
+        warningEl.innerHTML = `
+            <span class="warning-icon">⚠️</span>
+            <span class="warning-text">
+                <strong>GPT-5.2 Compatibility Warning:</strong> When reasoning_effort is enabled (low, medium, high, xhigh), 
+                temperature and top_p must be set to 1. These parameters are only supported when reasoning_effort is disabled. 
+                Attempting to use custom temperature/top_p with reasoning enabled may result in API errors.
+            </span>
+        `;
+        
+        // Insert after config section
+        const configSection = document.querySelector('.config-section');
+        configSection.parentNode.insertBefore(warningEl, configSection.nextSibling);
+    }
+    
+    warningEl.style.display = 'flex';
+}
+
+/**
+ * Hide reasoning conflict warning
+ */
+function hideReasoningWarning() {
+    const warningEl = document.getElementById('reasoningWarning');
+    if (warningEl) {
+        warningEl.style.display = 'none';
     }
 }
 
@@ -108,6 +164,8 @@ function validateJSON(inputId, badgeId) {
 document.addEventListener('DOMContentLoaded', function() {
     const toolsInput = document.getElementById('toolsInput');
     const messagesInput = document.getElementById('messagesInput');
+    const temperatureInput = document.getElementById('temperature');
+    const topPInput = document.getElementById('topP');
     
     toolsInput.addEventListener('input', () => {
         validateJSON('toolsInput', 'toolsValidation');
@@ -119,6 +177,10 @@ document.addEventListener('DOMContentLoaded', function() {
         // Hide error when user starts typing
         document.getElementById('errorSection').style.display = 'none';
     });
+    
+    // Check reasoning conflict when temperature or top_p changes
+    temperatureInput.addEventListener('input', checkReasoningConflict);
+    topPInput.addEventListener('input', checkReasoningConflict);
 });
 
 // ============================================
