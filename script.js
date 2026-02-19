@@ -244,95 +244,19 @@ function convertMessageContent(content) {
  * 3. If unknown role with pending tool_call → role = "tool" (with tool_call_id)
  * 4. Otherwise → role = "assistant"
  * 
- * OpenAI REQUIREMENT: Every tool_call must have a matching tool response IMMEDIATELY after!
- * 
- * MESSAGE REORDERING:
- * KeyStudio may have: [Assistant(tool_call), Assistant(text), Tool(response)]
- * OpenAI requires:    [Assistant(tool_call), Tool(response), Assistant(text)]
- * This function reorders messages to satisfy OpenAI's requirements.
+ * OpenAI REQUIREMENT: Every tool_call must have a matching tool response!
  */
 function convertMessages(inputMessages, toolNameMap) {
-    const allowedRoles = new Set(['system', 'user', 'assistant', 'tool', 'function', 'developer']);
-    
-    // PHASE 1: Pre-process to build tool response map
-    // Map: tool_call_id → { content, originalIndex }
-    const toolResponseMap = new Map();
-    const toolResponseIndices = new Set();
-    
-    // First, find all existing tool responses (already have role: "tool")
-    for (let i = 0; i < inputMessages.length; i++) {
-        const msg = inputMessages[i];
-        if (msg.role === 'tool' && msg.tool_call_id) {
-            toolResponseMap.set(msg.tool_call_id, {
-                content: convertMessageContent(msg.content),
-                originalIndex: i
-            });
-            toolResponseIndices.add(i);
-        }
-    }
-    
-    // PHASE 2: Build list of all tool_call_ids in order, and find their responses
-    // Also identify messages that are tool responses by nodeType
-    const toolCallQueue = []; // Array of { callId, responseIndex } - responses to be matched
-    
-    for (let i = 0; i < inputMessages.length; i++) {
-        const msg = inputMessages[i];
-        
-        // Track assistant tool_calls
-        if (msg.role === 'assistant' && Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) {
-            for (const call of msg.tool_calls) {
-                const callId = call.id || (call.function && call.function.id);
-                if (callId) {
-                    toolCallQueue.push({ callId, assistantIndex: i });
-                }
-            }
-        }
-    }
-    
-    // PHASE 3: Find tool responses by nodeType and match them to pending tool_calls
-    let pendingCallIndex = 0;
-    for (let i = 0; i < inputMessages.length; i++) {
-        if (toolResponseIndices.has(i)) continue; // Already processed
-        
-        const msg = inputMessages[i];
-        const nodeType = msg.additional_kwargs?.node_metadata?.nodeType;
-        const isInvalidRole = !allowedRoles.has(msg.role);
-        
-        // Check if this should be a tool response
-        const shouldBeToolResponse = 
-            (nodeType === 'tool' || nodeType === 'script') ||
-            (isInvalidRole && pendingCallIndex < toolCallQueue.length);
-        
-        if (shouldBeToolResponse && pendingCallIndex < toolCallQueue.length) {
-            const { callId } = toolCallQueue[pendingCallIndex];
-            
-            // Only assign if not already in toolResponseMap
-            if (!toolResponseMap.has(callId)) {
-                toolResponseMap.set(callId, {
-                    content: convertMessageContent(msg.content),
-                    originalIndex: i
-                });
-                toolResponseIndices.add(i);
-                pendingCallIndex++;
-            }
-        }
-    }
-    
-    // PHASE 4: Convert messages with proper ordering
     const convertedMessages = [];
-    const processedToolCalls = new Set(); // Track which tool_calls we've added responses for
     
-    for (let i = 0; i < inputMessages.length; i++) {
-        // Skip messages that are tool responses (we'll insert them after their tool_calls)
-        if (toolResponseIndices.has(i)) {
-            continue;
-        }
-        
+    // Queue to track pending tool_call_ids that need responses
+    const pendingToolCallIds = [];
+
+    for (let i = 0; i < inputMessages.length; i += 1) {
         const msg = inputMessages[i];
         const content = convertMessageContent(msg.content);
-        const nodeType = msg.additional_kwargs?.node_metadata?.nodeType;
 
-        // Handle assistant messages with tool_calls
+        // Normalize assistant tool_calls into OpenAI format
         if (msg.role === 'assistant' && Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) {
             const normalizedToolCalls = msg.tool_calls.map((call, idx) => {
                 const callId = call.id || `call_${Date.now()}_${i}_${idx}`;
@@ -356,8 +280,21 @@ function convertMessages(inputMessages, toolNameMap) {
                     }
                 }
 
+                // Heuristic: if internal node name was used, try to infer actual tool name
+                // from the immediate next message: "Executed **tool_name** ..."
+                if (!toolNameMap[rawName] && inputMessages[i + 1]) {
+                    const nextContent = convertMessageContent(inputMessages[i + 1].content);
+                    const executedMatch = nextContent.match(/Executed \*\*([^*]+)\*\*/i);
+                    if (executedMatch && executedMatch[1]) {
+                        rawName = executedMatch[1].trim();
+                    }
+                }
+
                 const finalName = toolNameMap[rawName] || rawName;
                 const argumentsString = typeof rawArgs === 'string' ? rawArgs : JSON.stringify(rawArgs || {});
+
+                // Track this tool_call_id - it needs a response!
+                pendingToolCallIds.push(callId);
 
                 return {
                     id: callId,
@@ -369,58 +306,43 @@ function convertMessages(inputMessages, toolNameMap) {
                 };
             });
 
-            // Add the assistant message with tool_calls
             convertedMessages.push({
                 role: 'assistant',
                 content: content || '',
                 tool_calls: normalizedToolCalls
             });
-            
-            // IMMEDIATELY add tool responses for each tool_call (OpenAI requirement!)
-            for (const toolCall of normalizedToolCalls) {
-                const response = toolResponseMap.get(toolCall.id);
-                if (response && !processedToolCalls.has(toolCall.id)) {
-                    convertedMessages.push({
-                        role: 'tool',
-                        tool_call_id: toolCall.id,
-                        content: response.content || ''
-                    });
-                    processedToolCalls.add(toolCall.id);
-                } else if (!processedToolCalls.has(toolCall.id)) {
-                    // No response found - create a placeholder to avoid OpenAI error
-                    convertedMessages.push({
-                        role: 'tool',
-                        tool_call_id: toolCall.id,
-                        content: '[Tool execution completed]'
-                    });
-                    processedToolCalls.add(toolCall.id);
-                }
+            continue;
+        }
+
+        // SIMPLE LOGIC:
+        // If role is user, assistant, or system → keep as-is
+        // If role is anything else → it's a tool response
+        
+        const validRoles = new Set(['user', 'assistant', 'system']);
+        
+        if (validRoles.has(msg.role)) {
+            // Valid role - keep as-is
+            // Skip empty messages
+            if (!content || content.trim() === '') {
+                continue;
             }
-            continue;
-        }
-
-        // Handle regular messages
-        const isValidRole = allowedRoles.has(msg.role);
-        let finalRole = msg.role;
-        
-        if (isValidRole) {
-            finalRole = msg.role;
-        } else if (nodeType === 'llm' || nodeType === 'agent' || nodeType === 'variable') {
-            finalRole = 'assistant';
+            convertedMessages.push({
+                role: msg.role,
+                content: content
+            });
         } else {
-            // Unknown role, default to assistant
-            finalRole = 'assistant';
+            // Invalid role (like "get_contracts_by_supplier_name", "store_contract_node", etc.)
+            // This is a tool response - assign pending tool_call_id
+            if (pendingToolCallIds.length > 0) {
+                const toolCallId = pendingToolCallIds.shift();
+                convertedMessages.push({
+                    role: 'tool',
+                    tool_call_id: toolCallId,
+                    content: content || ''
+                });
+            }
+            // If no pending tool_call_id, skip this message (orphan response)
         }
-
-        // Skip empty messages
-        if (!content || content.trim() === '') {
-            continue;
-        }
-        
-        convertedMessages.push({
-            role: finalRole,
-            content: content
-        });
     }
 
     return convertedMessages;
