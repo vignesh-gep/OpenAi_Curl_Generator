@@ -50,14 +50,29 @@ pasteModal.addEventListener("click", (e) => { if (e.target === pasteModal) hideP
 const pasteFromClipboardBtn = document.getElementById("pasteFromClipboardBtn");
 pasteFromClipboardBtn.addEventListener("click", async () => {
   try {
-    const clipboardText = await navigator.clipboard.readText();
-    if (clipboardText && clipboardText.trim()) {
-      pasteTextarea.value = clipboardText;
-      flash("📋 Pasted from clipboard!", "success");
-    } else {
-      flash("⚠️ Clipboard is empty", "error");
+    // Focus textarea first
+    pasteTextarea.focus();
+    
+    // Try modern clipboard API
+    if (navigator.clipboard && navigator.clipboard.readText) {
+      const clipboardText = await navigator.clipboard.readText();
+      if (clipboardText && clipboardText.trim()) {
+        pasteTextarea.value = clipboardText;
+        flash("📋 Pasted from clipboard!", "success");
+        return;
+      }
     }
+    
+    // Fallback: try execCommand
+    const success = document.execCommand('paste');
+    if (success && pasteTextarea.value.trim()) {
+      flash("📋 Pasted from clipboard!", "success");
+      return;
+    }
+    
+    flash("⚠️ Clipboard empty or not accessible. Try Ctrl+V.", "error");
   } catch (err) {
+    console.error("Clipboard error:", err);
     flash("❌ Cannot access clipboard. Use Ctrl+V instead.", "error");
   }
 });
