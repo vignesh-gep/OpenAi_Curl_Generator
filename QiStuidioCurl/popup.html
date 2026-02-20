@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>QiStuidioCurl</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <main class="app">
+    <div class="header">
+      <h1>🔄 QiStuidioCurl</h1>
+      <p class="sub">Capture JSON and prefill your Curl Generator</p>
+    </div>
+
+    <label for="generatorUrl">Generator URL</label>
+    <input
+      id="generatorUrl"
+      type="text"
+      placeholder="https://.../curl-generator/index.html"
+      autocomplete="off"
+    >
+
+    <!-- Two Column Layout -->
+    <div class="columns">
+      <!-- Left Column - Qi Studio -->
+      <div class="column column-qi">
+        <div class="column-header">
+          <span class="column-icon">🎨</span>
+          <span class="column-title">Qi Studio</span>
+        </div>
+        <div class="column-body">
+          <button id="captureToolsBtn" class="capture-btn">
+            <span class="btn-icon">📥</span>
+            <span>Capture Agent Config</span>
+          </button>
+          <button id="pasteToolsBtn" class="paste-btn">
+            <span class="btn-icon">📋</span>
+            <span>Paste JSON <small>(manual)</small></span>
+          </button>
+          <div class="status-box" id="toolsStatusBox">
+            <span id="toolsStatus">Not captured</span>
+            <button id="previewToolsBtn" class="preview-btn" style="display:none;">👁️</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Column - Langfuse -->
+      <div class="column column-langfuse">
+        <div class="column-header">
+          <span class="column-icon">📊</span>
+          <span class="column-title">Langfuse</span>
+        </div>
+        <div class="column-body">
+          <button id="captureMessagesBtn" class="capture-btn">
+            <span class="btn-icon">📥</span>
+            <span>Capture Conversation</span>
+          </button>
+          <button id="pasteMessagesBtn" class="paste-btn">
+            <span class="btn-icon">📋</span>
+            <span>Paste JSON <small>(manual)</small></span>
+          </button>
+          <div class="status-box" id="messagesStatusBox">
+            <span id="messagesStatus">Not captured</span>
+            <button id="previewMessagesBtn" class="preview-btn" style="display:none;">👁️</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="actions">
+      <button id="openPrefillBtn" class="primary-btn">
+        <span class="btn-icon">🚀</span>
+        <span>Open Generator & Prefill</span>
+      </button>
+      <button id="clearBtn" class="clear-btn">
+        <span class="btn-icon">🗑️</span>
+        <span>Clear</span>
+      </button>
+    </div>
+
+    <!-- Preview Modal -->
+    <div id="previewModal" class="modal" style="display:none;">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 id="previewTitle">Preview</h3>
+          <button id="closeModalBtn" class="close-btn">&times;</button>
+        </div>
+        <pre id="previewContent"></pre>
+        <div class="modal-footer">
+          <button id="copyPreviewBtn" class="primary-btn small">Copy JSON</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Paste Modal -->
+    <div id="pasteModal" class="modal" style="display:none;">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 id="pasteTitle">Paste JSON</h3>
+          <button id="closePasteModalBtn" class="close-btn">&times;</button>
+        </div>
+        <textarea id="pasteTextarea" placeholder="Paste your JSON array here..."></textarea>
+        <div class="modal-footer">
+          <button id="savePasteBtn" class="primary-btn small">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <details>
+      <summary>ℹ️ Quick usage</summary>
+      <ol>
+        <li><strong>Qi Studio:</strong> Open canvas, click agent node, then Capture.</li>
+        <li><strong>Langfuse:</strong> Copy JSON from trace, then Paste JSON.</li>
+        <li>Click <strong>Open Generator & Prefill</strong>, then Generate.</li>
+      </ol>
+    </details>
+
+    <div id="flash" role="status" aria-live="polite"></div>
+  </main>
+
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -823,7 +823,20 @@ function generateRequestBody(config, messages, tools) {
  * Generate curl command
  */
 function generateCurlCommand(config, requestBody) {
-    const fullUrl = `${config.apiEndpoint}?api-version=${config.apiVersion}&api-key=${config.apiKey}`;
+    // Use placeholder if no endpoint provided
+    const endpoint = config.apiEndpoint && config.apiEndpoint.trim() 
+        ? config.apiEndpoint 
+        : 'https://your-endpoint.com/openai/deployments/gpt-5.2/chat/completions';
+    
+    const apiKey = config.apiKey && config.apiKey.trim() 
+        ? config.apiKey 
+        : 'YOUR_API_KEY';
+    
+    const hostHeader = config.hostHeader && config.hostHeader.trim()
+        ? config.hostHeader
+        : 'your-endpoint.com';
+    
+    const fullUrl = `${endpoint}?api-version=${config.apiVersion}&api-key=${apiKey}`;
     
     // Pretty print JSON
     const jsonBody = JSON.stringify(requestBody, null, 4);
@@ -832,7 +845,7 @@ function generateCurlCommand(config, requestBody) {
     const escapedBody = jsonBody.replace(/'/g, "'\\''");
     
     return `curl --location '${fullUrl}' \\
---header 'Host: ${config.hostHeader}' \\
+--header 'Host: ${hostHeader}' \\
 --header 'Content-Type: application/json' \\
 --data '${escapedBody}'`;
 }
@@ -841,11 +854,24 @@ function generateCurlCommand(config, requestBody) {
  * Generate PowerShell command
  */
 function generatePowerShellCommand(config, requestBody) {
-    const fullUrl = `${config.apiEndpoint}?api-version=${config.apiVersion}&api-key=${config.apiKey}`;
+    // Use placeholder if no endpoint provided
+    const endpoint = config.apiEndpoint && config.apiEndpoint.trim() 
+        ? config.apiEndpoint 
+        : 'https://your-endpoint.com/openai/deployments/gpt-5.2/chat/completions';
+    
+    const apiKey = config.apiKey && config.apiKey.trim() 
+        ? config.apiKey 
+        : 'YOUR_API_KEY';
+    
+    const hostHeader = config.hostHeader && config.hostHeader.trim()
+        ? config.hostHeader
+        : 'your-endpoint.com';
+    
+    const fullUrl = `${endpoint}?api-version=${config.apiVersion}&api-key=${apiKey}`;
     const jsonBody = JSON.stringify(requestBody, null, 2);
     
     return `$headers = @{
-    "Host" = "${config.hostHeader}"
+    "Host" = "${hostHeader}"
     "Content-Type" = "application/json"
 }
 
@@ -999,87 +1025,52 @@ function copyToClipboard(elementId) {
 
 /**
  * Open generated request in Postman
+ * Uses cURL import - Postman can import cURL commands directly
  */
 function openInPostman() {
     try {
-        // Get the request body from the output
-        const bodyOutput = document.getElementById('bodyOutput');
-        if (!bodyOutput || !bodyOutput.textContent.trim()) {
+        // Get the curl command from the output
+        const curlOutput = document.getElementById('curlOutput');
+        if (!curlOutput || !curlOutput.textContent.trim()) {
             showToast('Generate a request first!');
             return;
         }
         
-        const requestBody = bodyOutput.textContent;
-        const config = getConfig();
+        const curlCommand = curlOutput.textContent;
         
-        // Build the API URL
-        let apiUrl = config.apiEndpoint;
-        if (apiUrl && !apiUrl.includes('api-version') && config.apiVersion) {
-            apiUrl += (apiUrl.includes('?') ? '&' : '?') + 'api-version=' + config.apiVersion;
-        }
+        // Copy curl to clipboard first
+        navigator.clipboard.writeText(curlCommand).then(() => {
+            showToast('📋 cURL copied! Opening Postman... Use Import → Raw Text → Paste');
+        }).catch(() => {
+            showToast('Opening Postman... Copy the cURL manually and import');
+        });
         
-        // Create Postman collection format
-        const postmanCollection = {
-            info: {
-                name: "Qi Studio Generated Request",
-                schema: "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
-            },
-            item: [{
-                name: "OpenAI Chat Completion",
-                request: {
-                    method: "POST",
-                    header: [
-                        { key: "Content-Type", value: "application/json" },
-                        { key: "api-key", value: config.apiKey || "{{api-key}}" }
-                    ],
-                    body: {
-                        mode: "raw",
-                        raw: requestBody,
-                        options: { raw: { language: "json" } }
-                    },
-                    url: {
-                        raw: apiUrl || "https://your-endpoint.openai.azure.com/openai/deployments/gpt-4/chat/completions",
-                        protocol: (apiUrl || "").startsWith("https") ? "https" : "http",
-                        host: [(apiUrl || "").split("//")[1]?.split("/")[0] || "your-endpoint.openai.azure.com"],
-                        path: (apiUrl || "").split("//")[1]?.split("/").slice(1).join("/").split("?")[0].split("/") || []
-                    }
-                }
-            }]
-        };
+        // Try to open Postman app
+        // Postman deep link for import
+        const postmanDeepLink = 'postman://app/import';
         
-        // Add host header if specified
-        if (config.hostHeader) {
-            postmanCollection.item[0].request.header.push({ key: "Host", value: config.hostHeader });
-        }
+        // Create a hidden link to try the deep link
+        const link = document.createElement('a');
+        link.href = postmanDeepLink;
+        link.style.display = 'none';
+        document.body.appendChild(link);
         
-        // Convert to JSON and encode for URL
-        const collectionJson = JSON.stringify(postmanCollection);
-        const encodedCollection = encodeURIComponent(collectionJson);
+        // Try to open
+        link.click();
         
-        // Try to open Postman with the collection
-        // Method 1: Postman deep link (opens Postman app if installed)
-        const postmanDeepLink = `postman://app/collections/import?data=${encodedCollection}`;
-        
-        // Create a hidden iframe to try the deep link
-        const iframe = document.createElement('iframe');
-        iframe.style.display = 'none';
-        document.body.appendChild(iframe);
-        
-        // Try deep link
-        iframe.src = postmanDeepLink;
-        
-        // Show success message with fallback instructions
+        // Clean up
         setTimeout(() => {
-            document.body.removeChild(iframe);
-            showToast('Opening Postman... If not opened, copy the JSON body and import manually.');
-        }, 500);
+            document.body.removeChild(link);
+        }, 100);
         
-        // Also try window.open as fallback (some browsers block iframe approach)
-        window.open(postmanDeepLink, '_blank');
+        // Also try window.location as fallback
+        setTimeout(() => {
+            window.location.href = postmanDeepLink;
+        }, 200);
         
     } catch (err) {
         console.error('Postman open error:', err);
-        showToast('Could not open Postman. Copy the request body and import manually.');
+        showToast('Could not open Postman. Copy the cURL and use Import → Raw Text in Postman.');
     }
 }
 
