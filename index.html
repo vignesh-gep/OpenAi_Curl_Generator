@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>KeyStudio → OpenAI Converter</title>
+    <title>Qi Studio → OpenAI Converter</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔄</text></svg>">
     <link rel="stylesheet" href="styles.css">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -19,11 +19,26 @@
             <div class="header-content">
                 <div class="header-left">
                     <span class="logo-icon">🔄</span>
-                    <h1>OpenAI <span class="highlight">Curl</span> Generator</h1>
+                    <h1>Qi Studio <span class="highlight">Curl</span> Generator</h1>
                 </div>
-                <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle Theme">
-                    <span class="theme-icon" id="themeIcon">☀️</span>
-                </button>
+                <div class="header-right">
+                    <div class="warning-indicator" id="warningIndicator" style="display: none;" onclick="showWarningsPanel()">
+                        <span class="warning-icon">⚠️</span>
+                        <span class="warning-count" id="warningCount">0</span>
+                        <span class="warning-text">warnings</span>
+                    </div>
+                    <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle Theme">
+                        <span class="theme-icon" id="themeIcon">☀️</span>
+                    </button>
+                </div>
+            </div>
+            <!-- Warnings Panel -->
+            <div class="warnings-panel" id="warningsPanel" style="display: none;">
+                <div class="warnings-panel-header">
+                    <span>⚠️ Warnings</span>
+                    <button onclick="hideWarningsPanel()" class="close-btn">✕</button>
+                </div>
+                <ul class="warnings-list" id="warningsList"></ul>
             </div>
         </header>
 
@@ -87,6 +102,27 @@
                     </select>
                 </div>
                 
+                <div class="config-item structured-output-item span-full">
+                    <div class="structured-output-header">
+                        <label class="toggle-label">
+                            <input type="checkbox" id="structuredOutputEnabled" onchange="toggleStructuredOutput()">
+                            <span>Enable Structured Output (response_format)</span>
+                        </label>
+                        <span class="structured-output-hint" id="structuredOutputHint">Define JSON schema for structured responses</span>
+                    </div>
+                    <textarea id="structuredOutputSchema" 
+                              placeholder='{
+  "type": "object",
+  "properties": {
+    "result": { "type": "string", "description": "The result" }
+  },
+  "required": ["result"],
+  "additionalProperties": false
+}' 
+                              disabled 
+                              style="opacity: 0.5; display: none;"></textarea>
+                </div>
+                
                 <div class="config-item">
                     <label for="temperature">Temperature: <span class="value-badge" id="tempValue">0.1</span></label>
                     <input type="range" id="temperature" min="0" max="2" step="0.1" value="0.1" 
@@ -129,22 +165,22 @@
                             <span class="card-icon">💬</span>
                             <div>
                                 <h3>Conversation History</h3>
-                                <p>Paste KeyStudio messages array</p>
+                                <p>Paste messages array from Qi Studio / Langfuse</p>
                             </div>
                         </div>
                         <span class="status-badge" id="messagesValidation">Paste JSON</span>
                     </div>
                     <div class="card-body">
-                        <textarea id="messagesInput" spellcheck="false" placeholder='[
+                        <textarea id="messagesInput" spellcheck="false">[
   {
-    "content": "System prompt...",
-    "role": "system"
+    "role": "system",
+    "content": "You are a helpful assistant. Replace this with your system prompt."
   },
   {
-    "content": "User message...",
-    "role": "user"
+    "role": "user",
+    "content": "Replace this with the user message."
   }
-]'></textarea>
+]</textarea>
                     </div>
                     <div class="card-footer">
                         <button class="btn-icon-text" onclick="formatJSON('messagesInput')">
@@ -156,29 +192,35 @@
                     </div>
                 </div>
 
-                <!-- Tools Input (Right) -->
+                <!-- Agent Configuration Input (Right) -->
                 <div class="input-card">
                     <div class="card-header">
                         <div class="card-title">
-                            <span class="card-icon">🛠️</span>
+                            <span class="card-icon">🤖</span>
                             <div>
-                                <h3>Tools Definition</h3>
-                                <p>Paste KeyStudio tools array</p>
+                                <h3>Agent Configuration</h3>
+                                <p>Paste agent node JSON or tools array</p>
                             </div>
                         </div>
                         <span class="status-badge" id="toolsValidation">Paste JSON</span>
                     </div>
                     <div class="card-body">
-                        <textarea id="toolsInput" spellcheck="false" placeholder='[
+                        <textarea id="toolsInput" spellcheck="false">[
   {
     "type": "tool",
-    "name": "get_weather",
-    "description": "Get weather info",
+    "name": "example_tool",
+    "description": "Replace with your tool description",
     "config": {
-      "schema": { ... }
-    }
+      "schema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    },
+    "alias": "example_tool"
   }
-]'></textarea>
+]</textarea>
+                        <p class="input-hint">💡 Tip: Paste entire agent node JSON to auto-fill temperature, reasoning & structured output</p>
                     </div>
                     <div class="card-footer">
                         <button class="btn-icon-text" onclick="formatJSON('toolsInput')">
@@ -201,7 +243,7 @@
                     <span>Generate OpenAI Request</span>
                 </span>
             </button>
-            <p class="action-hint">Converts tools & messages to OpenAI Chat Completion format</p>
+            <p class="action-hint">Converts agent config & messages to OpenAI Chat Completion format</p>
         </section>
 
         <!-- Output Section -->
@@ -217,10 +259,16 @@
                             <p>OpenAI-compatible JSON payload</p>
                         </div>
                     </div>
-                    <button class="btn-copy" onclick="event.stopPropagation(); copyToClipboard('bodyOutput')">
-                        <span class="copy-icon">📋</span>
-                        <span>Copy</span>
-                    </button>
+                    <div class="output-actions">
+                        <button class="btn-copy" onclick="event.stopPropagation(); copyToClipboard('bodyOutput')">
+                            <span class="copy-icon">📋</span>
+                            <span>Copy</span>
+                        </button>
+                        <button class="btn-postman" onclick="event.stopPropagation(); openInPostman()" title="Open in Postman">
+                            <span>🚀</span>
+                            <span>Postman</span>
+                        </button>
+                    </div>
                 </div>
                 <div class="collapsible-content">
                     <div class="code-container">
@@ -240,10 +288,16 @@
                             <p>Ready for Bash / Terminal / CMD</p>
                         </div>
                     </div>
-                    <button class="btn-copy" onclick="event.stopPropagation(); copyToClipboard('curlOutput')">
-                        <span class="copy-icon">📋</span>
-                        <span>Copy</span>
-                    </button>
+                    <div class="output-actions">
+                        <button class="btn-copy" onclick="event.stopPropagation(); copyToClipboard('curlOutput')">
+                            <span class="copy-icon">📋</span>
+                            <span>Copy</span>
+                        </button>
+                        <button class="btn-postman" onclick="event.stopPropagation(); openInPostman()" title="Open in Postman">
+                            <span>🚀</span>
+                            <span>Postman</span>
+                        </button>
+                    </div>
                 </div>
                 <div class="collapsible-content">
                     <div class="code-container">
@@ -263,10 +317,16 @@
                             <p>For Windows PowerShell</p>
                         </div>
                     </div>
-                    <button class="btn-copy" onclick="event.stopPropagation(); copyToClipboard('psOutput')">
-                        <span class="copy-icon">📋</span>
-                        <span>Copy</span>
-                    </button>
+                    <div class="output-actions">
+                        <button class="btn-copy" onclick="event.stopPropagation(); copyToClipboard('psOutput')">
+                            <span class="copy-icon">📋</span>
+                            <span>Copy</span>
+                        </button>
+                        <button class="btn-postman" onclick="event.stopPropagation(); openInPostman()" title="Open in Postman">
+                            <span>🚀</span>
+                            <span>Postman</span>
+                        </button>
+                    </div>
                 </div>
                 <div class="collapsible-content">
                     <div class="code-container">

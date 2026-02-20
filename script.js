@@ -1,6 +1,6 @@
 /**
  * LLM CURL GENERATOR - JavaScript
- * Converts KeyStudio format to OpenAI Chat Completion API format
+ * Converts Qi Studio format to OpenAI Chat Completion API format
  */
 
 // ============================================
@@ -27,22 +27,196 @@ function toggleTheme() {
 }
 
 /**
- * Initialize theme from localStorage
+ * Initialize theme from localStorage (defaults to light)
  */
 function initTheme() {
     const savedTheme = localStorage.getItem('theme');
     const themeIcon = document.getElementById('themeIcon');
     
-    if (savedTheme === 'light') {
+    // Default to light theme if no preference saved
+    if (savedTheme === 'dark') {
+        document.documentElement.removeAttribute('data-theme');
+        if (themeIcon) themeIcon.textContent = '☀️';
+    } else {
+        // Light theme is default
         document.documentElement.setAttribute('data-theme', 'light');
         if (themeIcon) themeIcon.textContent = '🌙';
-    } else {
-        if (themeIcon) themeIcon.textContent = '☀️';
+        if (!savedTheme) localStorage.setItem('theme', 'light');
     }
 }
 
 // Initialize theme on page load
 document.addEventListener('DOMContentLoaded', initTheme);
+
+// ============================================
+// WARNING SYSTEM
+// ============================================
+
+// Default template text to check against
+const DEFAULT_MESSAGES_TEMPLATE = `[
+  {
+    "role": "system",
+    "content": "You are a helpful assistant. Replace this with your system prompt."
+  },
+  {
+    "role": "user",
+    "content": "Replace this with the user message."
+  }
+]`;
+
+const DEFAULT_TOOLS_TEMPLATE = `[
+  {
+    "type": "tool",
+    "name": "example_tool",
+    "description": "Replace with your tool description",
+    "config": {
+      "schema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    },
+    "alias": "example_tool"
+  }
+]`;
+
+/**
+ * Current warnings list
+ */
+let currentWarnings = [];
+
+/**
+ * Check all warnings and update the indicator
+ */
+function checkWarnings() {
+    currentWarnings = [];
+    
+    // Check if messages template hasn't been modified
+    const messagesInput = document.getElementById('messagesInput');
+    if (messagesInput) {
+        const messagesValue = messagesInput.value.trim();
+        const defaultTrimmed = DEFAULT_MESSAGES_TEMPLATE.trim();
+        
+        // Normalize whitespace for comparison
+        const normalizedMessages = messagesValue.replace(/\s+/g, ' ');
+        const normalizedDefault = defaultTrimmed.replace(/\s+/g, ' ');
+        
+        if (normalizedMessages === normalizedDefault) {
+            currentWarnings.push('Conversation History still contains the default template. Please replace with your actual messages.');
+        }
+    }
+    
+    // Check if tools/agent config is empty or still default template
+    const toolsInput = document.getElementById('toolsInput');
+    if (toolsInput) {
+        const toolsValue = toolsInput.value.trim();
+        if (!toolsValue) {
+            currentWarnings.push('Agent Configuration is empty. Paste your agent node JSON or tools array.');
+        } else {
+            // Check if it's still the default template
+            const normalizedTools = toolsValue.replace(/\s+/g, ' ');
+            const normalizedDefault = DEFAULT_TOOLS_TEMPLATE.trim().replace(/\s+/g, ' ');
+            
+            if (normalizedTools === normalizedDefault) {
+                currentWarnings.push('Agent Configuration still contains the default template. Please replace with your actual agent config or tools.');
+            }
+        }
+    }
+    
+    // Check reasoning + temperature conflict
+    const reasoningEnabled = document.getElementById('reasoningEnabled')?.checked;
+    const temperature = parseFloat(document.getElementById('temperature')?.value || 0.1);
+    const topP = parseFloat(document.getElementById('topP')?.value || 0.1);
+    const maxTokens = parseInt(document.getElementById('maxOutputTokens')?.value || 1000);
+    
+    if (reasoningEnabled) {
+        if (temperature !== 1 || topP !== 1) {
+            currentWarnings.push('Reasoning enabled with custom temperature/top_p. GPT-5.2 requires temperature=1 and top_p=1 when reasoning_effort is used.');
+        }
+        if (maxTokens < 4000) {
+            currentWarnings.push(`Max Output Tokens (${maxTokens}) may be too low with reasoning enabled. Reasoning uses tokens from the same pool. Recommend 4000-16000 to avoid empty responses.`);
+        }
+    }
+    
+    // Update warning indicator
+    updateWarningIndicator();
+}
+
+/**
+ * Update the warning indicator in navbar
+ */
+function updateWarningIndicator() {
+    const indicator = document.getElementById('warningIndicator');
+    const countEl = document.getElementById('warningCount');
+    const textEl = indicator?.querySelector('.warning-text');
+    const listEl = document.getElementById('warningsList');
+    
+    if (!indicator) return;
+    
+    const count = currentWarnings.length;
+    
+    if (count > 0) {
+        indicator.style.display = 'flex';
+        countEl.textContent = count;
+        textEl.textContent = count === 1 ? 'warning' : 'warnings';
+        
+        // Update warnings list
+        if (listEl) {
+            listEl.innerHTML = currentWarnings.map(w => `<li>${w}</li>`).join('');
+        }
+    } else {
+        indicator.style.display = 'none';
+        hideWarningsPanel();
+    }
+}
+
+/**
+ * Show warnings panel
+ */
+function showWarningsPanel() {
+    const panel = document.getElementById('warningsPanel');
+    if (panel) {
+        panel.style.display = 'block';
+    }
+}
+
+/**
+ * Hide warnings panel
+ */
+function hideWarningsPanel() {
+    const panel = document.getElementById('warningsPanel');
+    if (panel) {
+        panel.style.display = 'none';
+    }
+}
+
+// Check warnings on input changes
+document.addEventListener('DOMContentLoaded', function() {
+    // Initial check
+    setTimeout(checkWarnings, 100);
+    
+    // Listen to input changes
+    const messagesInput = document.getElementById('messagesInput');
+    const toolsInput = document.getElementById('toolsInput');
+    
+    if (messagesInput) {
+        messagesInput.addEventListener('input', checkWarnings);
+    }
+    if (toolsInput) {
+        toolsInput.addEventListener('input', checkWarnings);
+    }
+    
+    // Close warnings panel when clicking outside
+    document.addEventListener('click', function(e) {
+        const panel = document.getElementById('warningsPanel');
+        const indicator = document.getElementById('warningIndicator');
+        if (panel && panel.style.display === 'block') {
+            if (!panel.contains(e.target) && !indicator.contains(e.target)) {
+                hideWarningsPanel();
+            }
+        }
+    });
+});
 
 /**
  * Toggle collapsible output sections
@@ -72,56 +246,32 @@ function toggleReasoningDropdown() {
 }
 
 /**
- * Check for reasoning + temperature/top_p conflict and show warning
+ * Toggle structured output textarea visibility
+ */
+function toggleStructuredOutput() {
+    const checkbox = document.getElementById('structuredOutputEnabled');
+    const schemaTextarea = document.getElementById('structuredOutputSchema');
+    
+    if (checkbox && schemaTextarea) {
+        if (checkbox.checked) {
+            schemaTextarea.disabled = false;
+            schemaTextarea.style.opacity = '1';
+            schemaTextarea.style.display = 'block';
+        } else {
+            schemaTextarea.disabled = true;
+            schemaTextarea.style.opacity = '0.5';
+            schemaTextarea.style.display = 'none';
+        }
+    }
+}
+
+/**
+ * Check for reasoning + temperature/top_p conflict
+ * Now uses the navbar warning system
  */
 function checkReasoningConflict() {
-    const reasoningEnabled = document.getElementById('reasoningEnabled').checked;
-    const temperature = parseFloat(document.getElementById('temperature').value);
-    const topP = parseFloat(document.getElementById('topP').value);
-    
-    // GPT-5.2 doesn't support temperature/top_p when reasoning_effort is enabled
-    if (reasoningEnabled && (temperature !== 1 || topP !== 1)) {
-        showReasoningWarning();
-    } else {
-        hideReasoningWarning();
-    }
-}
-
-/**
- * Show reasoning conflict warning
- */
-function showReasoningWarning() {
-    let warningEl = document.getElementById('reasoningWarning');
-    
-    if (!warningEl) {
-        warningEl = document.createElement('div');
-        warningEl.id = 'reasoningWarning';
-        warningEl.className = 'reasoning-warning';
-        warningEl.innerHTML = `
-            <span class="warning-icon">⚠️</span>
-            <span class="warning-text">
-                <strong>GPT-5.2 Compatibility Warning:</strong> When reasoning_effort is enabled (low, medium, high, xhigh), 
-                temperature and top_p must be set to 1. These parameters are only supported when reasoning_effort is disabled. 
-                Attempting to use custom temperature/top_p with reasoning enabled may result in API errors.
-            </span>
-        `;
-        
-        // Insert after config section
-        const configSection = document.querySelector('.config-section');
-        configSection.parentNode.insertBefore(warningEl, configSection.nextSibling);
-    }
-    
-    warningEl.style.display = 'flex';
-}
-
-/**
- * Hide reasoning conflict warning
- */
-function hideReasoningWarning() {
-    const warningEl = document.getElementById('reasoningWarning');
-    if (warningEl) {
-        warningEl.style.display = 'none';
-    }
+    // Just trigger the warning system check
+    checkWarnings();
 }
 
 // ============================================
@@ -130,6 +280,7 @@ function hideReasoningWarning() {
 
 /**
  * Validate JSON input and update badge
+ * Now supports both array format and agent node JSON format
  */
 function validateJSON(inputId, badgeId) {
     const input = document.getElementById(inputId);
@@ -137,27 +288,122 @@ function validateJSON(inputId, badgeId) {
     const value = input.value.trim();
     
     if (!value) {
-        badge.textContent = 'Paste JSON array';
+        badge.textContent = 'Paste JSON array or agent node';
         badge.className = 'validation-badge';
         return null;
     }
     
     try {
         const parsed = JSON.parse(value);
+        
+        // Check if it's an array (tools array or messages array)
         if (Array.isArray(parsed)) {
-            badge.textContent = `✓ Valid (${parsed.length} items)`;
+            badge.textContent = `✓ Valid array (${parsed.length} items)`;
             badge.className = 'validation-badge valid';
             return parsed;
-        } else {
-            badge.textContent = '✗ Must be an array';
-            badge.className = 'validation-badge invalid';
-            return null;
         }
+        
+        // Check if it's an agent node JSON (for tools input)
+        if (inputId === 'toolsInput' && isAgentNodeJson(parsed)) {
+            const tools = parsed.config?.tools || [];
+            badge.textContent = `✓ Agent node detected (${tools.length} tools)`;
+            badge.className = 'validation-badge valid';
+            
+            // Auto-fill config fields from agent node - but only once per unique agent
+            // Use agent id + name as unique identifier
+            const agentUniqueId = `${parsed.id || ''}_${parsed.name || ''}_${tools.length}`;
+            if (lastAutoFilledAgentId !== agentUniqueId) {
+                autoFillFromAgentNode(parsed);
+                lastAutoFilledAgentId = agentUniqueId;
+            }
+            
+            return tools;
+        }
+        
+        // Not a valid format
+        badge.textContent = '✗ Must be array or agent node';
+        badge.className = 'validation-badge invalid';
+        return null;
     } catch (e) {
         badge.textContent = '✗ Invalid JSON';
         badge.className = 'validation-badge invalid';
         return null;
     }
+}
+
+/**
+ * Check if the JSON is an agent node from Qi Studio
+ */
+function isAgentNodeJson(obj) {
+    if (!obj || typeof obj !== 'object') return false;
+    // Agent node has type: "agent" and config.tools
+    return obj.type === 'agent' && obj.config && Array.isArray(obj.config.tools);
+}
+
+// Track if we've already auto-filled from this agent config
+let lastAutoFilledAgentId = null;
+
+/**
+ * Auto-fill UI fields from agent node JSON
+ */
+function autoFillFromAgentNode(agentNode) {
+    const config = agentNode.config || {};
+    const model = config.model || {};
+    const structuredOutput = config.structuredOutput || {};
+    
+    let filledFields = [];
+    
+    // Fill temperature
+    if (model.temperature !== undefined) {
+        const tempInput = document.getElementById('temperature');
+        tempInput.value = model.temperature;
+        // Update the display badge
+        const tempDisplay = document.getElementById('tempValue');
+        if (tempDisplay) tempDisplay.textContent = model.temperature;
+        filledFields.push('temperature');
+    }
+    
+    // Fill reasoning effort
+    if (model.reasoningEffort) {
+        const reasoningCheckbox = document.getElementById('reasoningEnabled');
+        const reasoningDropdown = document.getElementById('reasoningEffort');
+        
+        reasoningCheckbox.checked = true;
+        reasoningDropdown.disabled = false;
+        reasoningDropdown.style.opacity = '1';
+        reasoningDropdown.value = model.reasoningEffort;
+        
+        checkReasoningConflict();
+        filledFields.push('reasoning');
+    }
+    
+    // Fill structured output - check if enable is true
+    const structuredCheckbox = document.getElementById('structuredOutputEnabled');
+    const structuredSchema = document.getElementById('structuredOutputSchema');
+    
+    if (structuredCheckbox && structuredSchema) {
+        if (structuredOutput.enable === true && structuredOutput.schema) {
+            // Enable and fill the schema
+            structuredCheckbox.checked = true;
+            structuredSchema.disabled = false;
+            structuredSchema.style.opacity = '1';
+            structuredSchema.style.display = 'block';
+            structuredSchema.value = JSON.stringify(structuredOutput.schema, null, 2);
+            filledFields.push('structured output');
+        } else {
+            // Disable structured output (default)
+            structuredCheckbox.checked = false;
+            structuredSchema.disabled = true;
+            structuredSchema.style.opacity = '0.5';
+            structuredSchema.style.display = 'none';
+            structuredSchema.value = '';
+        }
+    }
+    
+    // Show a toast notification with what was filled
+    const agentName = agentNode.name || 'agent';
+    const fieldsStr = filledFields.length > 0 ? ` (${filledFields.join(', ')})` : '';
+    showToast(`✓ Auto-filled from: ${agentName}${fieldsStr}`);
 }
 
 // Add event listeners for real-time validation
@@ -181,6 +427,18 @@ document.addEventListener('DOMContentLoaded', function() {
     // Check reasoning conflict when temperature or top_p changes
     temperatureInput.addEventListener('input', checkReasoningConflict);
     topPInput.addEventListener('input', checkReasoningConflict);
+    
+    // Check warnings when max tokens changes
+    const maxTokensInput = document.getElementById('maxOutputTokens');
+    if (maxTokensInput) {
+        maxTokensInput.addEventListener('input', checkWarnings);
+    }
+    
+    // Check warnings when reasoning is toggled
+    const reasoningCheckbox = document.getElementById('reasoningEnabled');
+    if (reasoningCheckbox) {
+        reasoningCheckbox.addEventListener('change', checkWarnings);
+    }
 });
 
 // ============================================
@@ -188,9 +446,9 @@ document.addEventListener('DOMContentLoaded', function() {
 // ============================================
 
 /**
- * Convert tools from KeyStudio format to OpenAI format
+ * Convert tools from Qi Studio format to OpenAI format
  * 
- * KeyStudio format:
+ * Qi Studio format:
  * {
  *   "_id": "...",
  *   "name": "handoff_to_node",
@@ -250,7 +508,7 @@ function convertTools(inputTools) {
             return tool;
         }
         
-        // Convert from KeyStudio format
+        // Convert from Qi Studio format
         const functionName = tool.alias || tool.name || 'unknown_function';
         const description = tool.description || '';
         
@@ -300,8 +558,8 @@ function buildToolNameMap(inputTools) {
 }
 
 /**
- * Convert message content from KeyStudio format to OpenAI format
- * KeyStudio: content can be array [{type: "text", text: "..."}] or string
+ * Convert message content from Qi Studio format to OpenAI format
+ * Qi Studio: content can be array [{type: "text", text: "..."}] or string
  * OpenAI: content is always a string
  */
 function convertMessageContent(content) {
@@ -310,7 +568,7 @@ function convertMessageContent(content) {
         return content;
     }
     
-    // If content is an array (KeyStudio format)
+    // If content is an array (Qi Studio format)
     if (Array.isArray(content)) {
         return content
             .filter(item => item.type === 'text' && item.text)
@@ -328,7 +586,7 @@ function convertMessageContent(content) {
 }
 
 /**
- * Convert messages array from KeyStudio format to OpenAI format
+ * Convert messages array from Qi Studio format to OpenAI format
  * 
  * ROLE MAPPING STRATEGY:
  * 1. If role is already valid (system, user, assistant, tool, function, developer) → keep as-is
@@ -358,7 +616,7 @@ function convertMessages(inputMessages, toolNameMap) {
                 let rawName = '';
                 let rawArgs = {};
 
-                // KeyStudio style: { id, name, args }
+                // Qi Studio style: { id, name, args }
                 if (call.name) {
                     rawName = call.name;
                     rawArgs = call.args || {};
@@ -451,6 +709,20 @@ function convertMessages(inputMessages, toolNameMap) {
  */
 function getConfig() {
     const reasoningEnabled = document.getElementById('reasoningEnabled').checked;
+    const structuredOutputEnabled = document.getElementById('structuredOutputEnabled')?.checked || false;
+    
+    let structuredOutputSchema = null;
+    if (structuredOutputEnabled) {
+        const schemaText = document.getElementById('structuredOutputSchema')?.value?.trim();
+        if (schemaText) {
+            try {
+                structuredOutputSchema = JSON.parse(schemaText);
+            } catch (e) {
+                console.warn('Invalid structured output schema JSON');
+            }
+        }
+    }
+    
     return {
         apiEndpoint: document.getElementById('apiEndpoint').value || '',
         apiVersion: document.getElementById('apiVersion').value || '2024-02-01',
@@ -463,8 +735,48 @@ function getConfig() {
         presencePenalty: parseFloat(document.getElementById('presencePenalty').value) || 0,
         maxOutputTokens: parseInt(document.getElementById('maxOutputTokens').value) || 1000,
         reasoningEnabled: reasoningEnabled,
-        reasoningEffort: reasoningEnabled ? document.getElementById('reasoningEffort').value : null
+        reasoningEffort: reasoningEnabled ? document.getElementById('reasoningEffort').value : null,
+        structuredOutputEnabled: structuredOutputEnabled,
+        structuredOutputSchema: structuredOutputSchema
     };
+}
+
+/**
+ * Fix schema for OpenAI strict mode requirements:
+ * 1. All properties in 'properties' must be in 'required' array
+ * 2. additionalProperties must be false
+ * Applies recursively for nested objects
+ */
+function fixSchemaForOpenAI(schema) {
+    if (!schema || typeof schema !== 'object') return schema;
+    
+    const fixed = { ...schema };
+    
+    // If it's an object type with properties
+    if (fixed.type === 'object' && fixed.properties) {
+        // Get all property keys
+        const allPropertyKeys = Object.keys(fixed.properties);
+        
+        // Set required to include ALL properties
+        fixed.required = allPropertyKeys;
+        
+        // Set additionalProperties to false
+        fixed.additionalProperties = false;
+        
+        // Recursively fix nested object properties
+        const fixedProperties = {};
+        for (const [key, value] of Object.entries(fixed.properties)) {
+            fixedProperties[key] = fixSchemaForOpenAI(value);
+        }
+        fixed.properties = fixedProperties;
+    }
+    
+    // Handle array items
+    if (fixed.type === 'array' && fixed.items) {
+        fixed.items = fixSchemaForOpenAI(fixed.items);
+    }
+    
+    return fixed;
 }
 
 /**
@@ -485,6 +797,23 @@ function generateRequestBody(config, messages, tools) {
     // Add reasoning_effort parameter only if enabled
     if (config.reasoningEnabled && config.reasoningEffort) {
         body.reasoning_effort = config.reasoningEffort;
+    }
+    
+    // Add structured output (response_format) if enabled
+    if (config.structuredOutputEnabled && config.structuredOutputSchema) {
+        // Auto-fix schema for OpenAI strict mode requirements:
+        // 1. All properties must be in 'required' array
+        // 2. additionalProperties must be false
+        const fixedSchema = fixSchemaForOpenAI(config.structuredOutputSchema);
+        
+        body.response_format = {
+            type: "json_schema",
+            json_schema: {
+                name: "structured_output",
+                strict: true,
+                schema: fixedSchema
+            }
+        };
     }
     
     return body;
@@ -543,7 +872,7 @@ function generateCurl() {
         // Validate and parse tools
         const inputTools = validateJSON('toolsInput', 'toolsValidation');
         if (!inputTools) {
-            showError('Please enter valid Tools JSON array');
+            showError('Please enter valid Agent Configuration (agent node JSON or tools array)');
             return;
         }
         
@@ -554,7 +883,7 @@ function generateCurl() {
             return;
         }
         
-        // Convert tools from KeyStudio format to OpenAI format
+        // Convert tools from Qi Studio format to OpenAI format
         const convertedTools = convertTools(inputTools);
         const toolNameMap = buildToolNameMap(inputTools);
         
@@ -588,8 +917,12 @@ function generateCurl() {
         // Scroll to output
         document.getElementById('outputSection').scrollIntoView({ behavior: 'smooth' });
         
-        // Show success toast
-        showToast(`✓ Generated! ${convertedMessages.length} messages, ${convertedTools.length} tools`);
+        // Show success toast with config info
+        const extras = [];
+        if (config.reasoningEnabled) extras.push(`reasoning: ${config.reasoningEffort}`);
+        if (config.structuredOutputEnabled) extras.push('structured output');
+        const extraInfo = extras.length > 0 ? ` [${extras.join(', ')}]` : '';
+        showToast(`✓ Generated! ${convertedMessages.length} msgs, ${convertedTools.length} tools${extraInfo}`);
         
     } catch (error) {
         showError('Error generating curl: ' + error.message);
@@ -665,6 +998,92 @@ function copyToClipboard(elementId) {
 }
 
 /**
+ * Open generated request in Postman
+ */
+function openInPostman() {
+    try {
+        // Get the request body from the output
+        const bodyOutput = document.getElementById('bodyOutput');
+        if (!bodyOutput || !bodyOutput.textContent.trim()) {
+            showToast('Generate a request first!');
+            return;
+        }
+        
+        const requestBody = bodyOutput.textContent;
+        const config = getConfig();
+        
+        // Build the API URL
+        let apiUrl = config.apiEndpoint;
+        if (apiUrl && !apiUrl.includes('api-version') && config.apiVersion) {
+            apiUrl += (apiUrl.includes('?') ? '&' : '?') + 'api-version=' + config.apiVersion;
+        }
+        
+        // Create Postman collection format
+        const postmanCollection = {
+            info: {
+                name: "Qi Studio Generated Request",
+                schema: "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+            },
+            item: [{
+                name: "OpenAI Chat Completion",
+                request: {
+                    method: "POST",
+                    header: [
+                        { key: "Content-Type", value: "application/json" },
+                        { key: "api-key", value: config.apiKey || "{{api-key}}" }
+                    ],
+                    body: {
+                        mode: "raw",
+                        raw: requestBody,
+                        options: { raw: { language: "json" } }
+                    },
+                    url: {
+                        raw: apiUrl || "https://your-endpoint.openai.azure.com/openai/deployments/gpt-4/chat/completions",
+                        protocol: (apiUrl || "").startsWith("https") ? "https" : "http",
+                        host: [(apiUrl || "").split("//")[1]?.split("/")[0] || "your-endpoint.openai.azure.com"],
+                        path: (apiUrl || "").split("//")[1]?.split("/").slice(1).join("/").split("?")[0].split("/") || []
+                    }
+                }
+            }]
+        };
+        
+        // Add host header if specified
+        if (config.hostHeader) {
+            postmanCollection.item[0].request.header.push({ key: "Host", value: config.hostHeader });
+        }
+        
+        // Convert to JSON and encode for URL
+        const collectionJson = JSON.stringify(postmanCollection);
+        const encodedCollection = encodeURIComponent(collectionJson);
+        
+        // Try to open Postman with the collection
+        // Method 1: Postman deep link (opens Postman app if installed)
+        const postmanDeepLink = `postman://app/collections/import?data=${encodedCollection}`;
+        
+        // Create a hidden iframe to try the deep link
+        const iframe = document.createElement('iframe');
+        iframe.style.display = 'none';
+        document.body.appendChild(iframe);
+        
+        // Try deep link
+        iframe.src = postmanDeepLink;
+        
+        // Show success message with fallback instructions
+        setTimeout(() => {
+            document.body.removeChild(iframe);
+            showToast('Opening Postman... If not opened, copy the JSON body and import manually.');
+        }, 500);
+        
+        // Also try window.open as fallback (some browsers block iframe approach)
+        window.open(postmanDeepLink, '_blank');
+        
+    } catch (err) {
+        console.error('Postman open error:', err);
+        showToast('Could not open Postman. Copy the request body and import manually.');
+    }
+}
+
+/**
  * Toggle API key visibility
  */
 function toggleApiKeyVisibility() {
@@ -709,8 +1128,10 @@ function clearInput(inputId) {
     // Reset validation badge
     if (inputId === 'toolsInput') {
         const badge = document.getElementById('toolsValidation');
-        badge.textContent = 'Paste JSON array';
+        badge.textContent = 'Paste JSON array or agent node';
         badge.className = 'validation-badge';
+        // Reset auto-fill tracking so next paste will auto-fill again
+        lastAutoFilledAgentId = null;
     } else if (inputId === 'messagesInput') {
         const badge = document.getElementById('messagesValidation');
         badge.textContent = 'Paste JSON array';
