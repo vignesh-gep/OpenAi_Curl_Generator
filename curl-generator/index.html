@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Qi Studio → OpenAI Converter</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔄</text></svg>">
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Animated Background -->
+    <div class="bg-gradient"></div>
+    <div class="bg-grid"></div>
+    
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <div class="header-left">
+                    <span class="logo-icon">🔄</span>
+                    <h1>Qi Studio <span class="highlight">Curl</span> Generator</h1>
+                </div>
+                <div class="header-right">
+                    <div class="warning-indicator" id="warningIndicator" style="display: none;" onclick="showWarningsPanel()">
+                        <span class="warning-icon">⚠️</span>
+                        <span class="warning-count" id="warningCount">0</span>
+                        <span class="warning-text">warnings</span>
+                    </div>
+                    <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle Theme">
+                        <span class="theme-icon" id="themeIcon">☀️</span>
+                    </button>
+                </div>
+            </div>
+            <!-- Warnings Panel -->
+            <div class="warnings-panel" id="warningsPanel" style="display: none;">
+                <div class="warnings-panel-header">
+                    <span>⚠️ Warnings</span>
+                    <button onclick="hideWarningsPanel()" class="close-btn">✕</button>
+                </div>
+                <ul class="warnings-list" id="warningsList"></ul>
+            </div>
+        </header>
+
+        <!-- API Configuration -->
+        <section class="section config-section">
+            <div class="section-header">
+                <div class="section-icon">⚙️</div>
+                <div>
+                    <h2>API Configuration</h2>
+                    <p class="section-desc">Configure your OpenAI endpoint settings</p>
+                </div>
+            </div>
+            
+            <div class="config-grid">
+                <div class="config-item span-full">
+                    <label for="apiEndpoint">API Endpoint URL</label>
+                    <input type="text" id="apiEndpoint" 
+                           value=""
+                           placeholder="https://your-endpoint.com/openai/deployments/model/chat/completions?api-version=xxx&api-key=xxx">
+                </div>
+                
+                <div class="config-item">
+                    <label for="apiVersion">API Version</label>
+                    <input type="text" id="apiVersion" value="2025-04-01-preview" placeholder="2024-02-01">
+                </div>
+                
+                <div class="config-item">
+                    <label for="hostHeader">Host Header</label>
+                    <input type="text" id="hostHeader" value="" placeholder="api.openai.com">
+                </div>
+                
+                <div class="config-item">
+                    <label for="apiKey">API Key</label>
+                    <div class="input-group">
+                        <input type="password" id="apiKey" placeholder="Enter your API key">
+                        <button type="button" class="input-btn" onclick="toggleApiKeyVisibility()" title="Show/Hide API Key">
+                            <span id="eyeIcon">Show</span>
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="config-item">
+                    <label for="toolChoice">Tool Choice</label>
+                    <select id="toolChoice">
+                        <option value="auto" selected>auto</option>
+                        <option value="none">none</option>
+                        <option value="required">required</option>
+                    </select>
+                </div>
+                
+                <div class="config-item">
+                    <label class="toggle-label">
+                        <input type="checkbox" id="reasoningEnabled" onchange="toggleReasoningDropdown()">
+                        <span>Enable Reasoning</span>
+                    </label>
+                    <select id="reasoningEffort" disabled style="opacity: 0.5;">
+                        <option value="low" selected>low</option>
+                        <option value="medium">medium</option>
+                        <option value="high">high</option>
+                        <option value="xhigh">xhigh</option>
+                    </select>
+                </div>
+                
+                <div class="config-item structured-output-item span-full">
+                    <div class="structured-output-header">
+                        <label class="toggle-label">
+                            <input type="checkbox" id="structuredOutputEnabled" onchange="toggleStructuredOutput()">
+                            <span>Enable Structured Output (response_format)</span>
+                        </label>
+                        <span class="structured-output-hint" id="structuredOutputHint">Define JSON schema for structured responses</span>
+                    </div>
+                    <textarea id="structuredOutputSchema" 
+                              placeholder='{
+  "type": "object",
+  "properties": {
+    "result": { "type": "string", "description": "The result" }
+  },
+  "required": ["result"],
+  "additionalProperties": false
+}' 
+                              disabled 
+                              style="opacity: 0.5; display: none;"></textarea>
+                </div>
+                
+                <div class="config-item">
+                    <label for="temperature">Temperature: <span class="value-badge" id="tempValue">0.1</span></label>
+                    <input type="range" id="temperature" min="0" max="2" step="0.1" value="0.1" 
+                           oninput="document.getElementById('tempValue').textContent = this.value">
+                </div>
+                
+                <div class="config-item">
+                    <label for="topP">Top P: <span class="value-badge" id="topPValue">0.1</span></label>
+                    <input type="range" id="topP" min="0" max="1" step="0.1" value="0.1"
+                           oninput="document.getElementById('topPValue').textContent = this.value">
+                </div>
+                
+                <div class="config-item">
+                    <label for="frequencyPenalty">Frequency Penalty: <span class="value-badge" id="freqPenValue">0</span></label>
+                    <input type="range" id="frequencyPenalty" min="0" max="2" step="0.1" value="0" 
+                           oninput="document.getElementById('freqPenValue').textContent = this.value">
+                </div>
+                
+                <div class="config-item">
+                    <label for="presencePenalty">Presence Penalty: <span class="value-badge" id="presPenValue">0</span></label>
+                    <input type="range" id="presencePenalty" min="0" max="2" step="0.1" value="0"
+                           oninput="document.getElementById('presPenValue').textContent = this.value">
+                </div>
+                
+                <div class="config-item">
+                    <label for="maxOutputTokens">Max Output Tokens: <span class="value-badge" id="maxTokensValue">1000</span></label>
+                    <input type="range" id="maxOutputTokens" min="100" max="16000" step="100" value="1000"
+                           oninput="document.getElementById('maxTokensValue').textContent = this.value">
+                </div>
+            </div>
+        </section>
+
+        <!-- Input Section -->
+        <section class="section input-section">
+            <div class="input-grid">
+                <!-- Messages Input (Left) -->
+                <div class="input-card">
+                    <div class="card-header">
+                        <div class="card-title">
+                            <span class="card-icon">💬</span>
+                            <div>
+                                <h3>Conversation History</h3>
+                                <p>Paste messages array from Qi Studio / Langfuse</p>
+                            </div>
+                        </div>
+                        <span class="status-badge" id="messagesValidation">Paste JSON</span>
+                    </div>
+                    <div class="card-body">
+                        <textarea id="messagesInput" spellcheck="false">[
+  {
+    "role": "system",
+    "content": "You are a helpful assistant. Replace this with your system prompt."
+  },
+  {
+    "role": "user",
+    "content": "Replace this with the user message."
+  }
+]</textarea>
+                    </div>
+                    <div class="card-footer">
+                        <button class="btn-icon-text" onclick="formatJSON('messagesInput')">
+                            <span>✨</span> Format
+                        </button>
+                        <button class="btn-icon-text" onclick="clearInput('messagesInput')">
+                            <span>🗑️</span> Clear
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Agent Configuration Input (Right) -->
+                <div class="input-card">
+                    <div class="card-header">
+                        <div class="card-title">
+                            <span class="card-icon">🤖</span>
+                            <div>
+                                <h3>Agent Configuration</h3>
+                                <p>Paste agent node JSON or tools array</p>
+                            </div>
+                        </div>
+                        <span class="status-badge" id="toolsValidation">Paste JSON</span>
+                    </div>
+                    <div class="card-body">
+                        <textarea id="toolsInput" spellcheck="false">[
+  {
+    "type": "tool",
+    "name": "example_tool",
+    "description": "Replace with your tool description",
+    "config": {
+      "schema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    },
+    "alias": "example_tool"
+  }
+]</textarea>
+                        <p class="input-hint">💡 Tip: Paste entire agent node JSON to auto-fill temperature, reasoning & structured output</p>
+                    </div>
+                    <div class="card-footer">
+                        <button class="btn-icon-text" onclick="formatJSON('toolsInput')">
+                            <span>✨</span> Format
+                        </button>
+                        <button class="btn-icon-text" onclick="clearInput('toolsInput')">
+                            <span>🗑️</span> Clear
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Generate Button -->
+        <section class="action-section">
+            <button class="btn-generate" onclick="generateCurl()">
+                <span class="btn-bg"></span>
+                <span class="btn-content">
+                    <span class="btn-icon">⚡</span>
+                    <span>Generate OpenAI Request</span>
+                </span>
+            </button>
+            <p class="action-hint">Converts agent config & messages to OpenAI Chat Completion format</p>
+        </section>
+
+        <!-- Output Section -->
+        <section class="section output-section" id="outputSection" style="display: none;">
+            <!-- Body JSON -->
+            <div class="output-card collapsible">
+                <div class="card-header clickable" onclick="toggleCollapsible(this)">
+                    <div class="card-title">
+                        <span class="collapse-icon">▶</span>
+                        <span class="card-icon">📦</span>
+                        <div>
+                            <h3>Request Body</h3>
+                            <p>OpenAI-compatible JSON payload</p>
+                        </div>
+                    </div>
+                    <div class="output-actions">
+                        <button class="btn-copy" onclick="event.stopPropagation(); copyToClipboard('bodyOutput')">
+                            <span class="copy-icon">📋</span>
+                            <span>Copy</span>
+                        </button>
+                        <button class="btn-postman" onclick="event.stopPropagation(); openInPostman()" title="Open in Postman">
+                            <span>🚀</span>
+                            <span>Postman</span>
+                        </button>
+                    </div>
+                </div>
+                <div class="collapsible-content">
+                    <div class="code-container">
+                        <pre id="bodyOutput" class="code-block json-block"></pre>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Curl Command -->
+            <div class="output-card collapsible">
+                <div class="card-header clickable" onclick="toggleCollapsible(this)">
+                    <div class="card-title">
+                        <span class="collapse-icon">▶</span>
+                        <span class="card-icon">🖥️</span>
+                        <div>
+                            <h3>Curl Command</h3>
+                            <p>Ready for Bash / Terminal / CMD</p>
+                        </div>
+                    </div>
+                    <div class="output-actions">
+                        <button class="btn-copy" onclick="event.stopPropagation(); copyToClipboard('curlOutput')">
+                            <span class="copy-icon">📋</span>
+                            <span>Copy</span>
+                        </button>
+                        <button class="btn-postman" onclick="event.stopPropagation(); openInPostman()" title="Open in Postman">
+                            <span>🚀</span>
+                            <span>Postman</span>
+                        </button>
+                    </div>
+                </div>
+                <div class="collapsible-content">
+                    <div class="code-container">
+                        <pre id="curlOutput" class="code-block curl-block"></pre>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PowerShell Command -->
+            <div class="output-card collapsible">
+                <div class="card-header clickable" onclick="toggleCollapsible(this)">
+                    <div class="card-title">
+                        <span class="collapse-icon">▶</span>
+                        <span class="card-icon">💠</span>
+                        <div>
+                            <h3>PowerShell Command</h3>
+                            <p>For Windows PowerShell</p>
+                        </div>
+                    </div>
+                    <div class="output-actions">
+                        <button class="btn-copy" onclick="event.stopPropagation(); copyToClipboard('psOutput')">
+                            <span class="copy-icon">📋</span>
+                            <span>Copy</span>
+                        </button>
+                        <button class="btn-postman" onclick="event.stopPropagation(); openInPostman()" title="Open in Postman">
+                            <span>🚀</span>
+                            <span>Postman</span>
+                        </button>
+                    </div>
+                </div>
+                <div class="collapsible-content">
+                    <div class="code-container">
+                        <pre id="psOutput" class="code-block ps-block"></pre>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Error Section -->
+        <section class="error-section" id="errorSection" style="display: none;">
+            <div class="error-card">
+                <div class="error-icon">⚠️</div>
+                <div class="error-content">
+                    <h4>Something went wrong</h4>
+                    <p id="errorMessage"></p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <div class="footer-content">
+                <div class="footer-links">
+                    <span class="footer-badge">Qi Studio</span>
+                    <span class="footer-separator">→</span>
+                    <span class="footer-badge">OpenAI</span>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

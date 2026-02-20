@@ -1,0 +1,22 @@
+{
+  "name": "llm-curl-generator",
+  "version": "1.0.0",
+  "description": "Convert KeyStudio format to OpenAI Chat Completion API curl commands",
+  "main": "index.html",
+  "scripts": {
+    "start": "npx serve .",
+    "test": "node test-generator.js"
+  },
+  "keywords": [
+    "openai",
+    "curl",
+    "generator",
+    "keystudio",
+    "llm",
+    "api"
+  ],
+  "author": "GEP",
+  "license": "MIT"
+}
+
+

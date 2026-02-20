@@ -1,0 +1,98 @@
+{
+  "messages": [
+    {
+        "content": [
+            {
+                "type": "text",
+                "text": "# Contract Extension Assistant - System Prompt (truncated for test)"
+            }
+        ],
+        "role": "system"
+    },
+    {
+        "content": "I want to extend contract CDR0027626",
+        "role": "user"
+    },
+    {
+        "content": "",
+        "role": "assistant",
+        "tool_calls": [
+            {
+                "id": "call_1771491959119_5g6zf46",
+                "name": "getcontractbycontractnumber1",
+                "args": {}
+            }
+        ]
+    },
+    {
+        "content": {
+            "data": {
+                "result": [
+                    {
+                        "contractNumber": "CDR0027626",
+                        "contractName": "Child of Copy of Amendment of CDR0027624.0",
+                        "contractType": "Main Agreement",
+                        "contractSubType": "Billing Contract",
+                        "effectiveDate": "2025-11-14T10:13:09.394Z",
+                        "expiryDate": "2026-05-14T10:13:09.394Z",
+                        "isPerpetual": false,
+                        "isAutoRenew": false,
+                        "owner": "DeveloperDomain Admin",
+                        "stateName": "Live",
+                        "supplierName": null,
+                        "supplierSourceIdentificationNo": null
+                    }
+                ]
+            }
+        },
+        "additional_kwargs": {
+            "node_metadata": {
+                "nodeName": "getcontractbycontractnumber1",
+                "nodeType": "tool",
+                "source": "thread_update"
+            }
+        },
+        "role": "getcontractbycontractnumber1"
+    },
+    {
+        "content": "",
+        "role": "assistant",
+        "tool_calls": [
+            {
+                "id": "call_1771491961349_elkog7p",
+                "name": "getting_supplier_infromation_using_contract_number",
+                "args": {}
+            }
+        ]
+    },
+    {
+        "content": "Step 1 complete. Question Asked to User: Contract summary card displayed showing contract details (Contract Number, Name, Type, Status, Expiry Date). Button shown: 'Proceed with Request'. WAIT for user to click 'Proceed with Request'. NEXT: call contract_extension_datepicker to show the extension date picker.",
+        "additional_kwargs": {
+            "node_metadata": {
+                "nodeName": "getting_supplier_infromation_using_contract_number",
+                "nodeType": "tool",
+                "source": "thread_update"
+            }
+        },
+        "role": "getting_supplier_infromation_using_contract_number"
+    },
+    {
+        "content": "Proceed with Request",
+        "role": "user"
+    }
+  ],
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "getting_supplier_infromation_using_contract_number",
+        "description": "Fetches contract details by contract number",
+        "parameters": {
+          "type": "object",
+          "properties": {},
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}
