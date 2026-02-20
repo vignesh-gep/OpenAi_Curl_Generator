@@ -4,7 +4,7 @@ const KEYS = {
   generatorUrl: "qis_generator_url"
 };
 
-const DEFAULT_GENERATOR_URL = "https://llm-curl-generator.vercel.app/";
+const DEFAULT_GENERATOR_URL = "https://openai-curl-generator.vercel.app/";
 
 const generatorUrlEl = document.getElementById("generatorUrl");
 const toolsStatusEl = document.getElementById("toolsStatus");
@@ -46,6 +46,22 @@ closePasteModalBtn.addEventListener("click", hidePasteModal);
 savePasteBtn.addEventListener("click", savePastedJson);
 pasteModal.addEventListener("click", (e) => { if (e.target === pasteModal) hidePasteModal(); });
 
+// Paste from clipboard button
+const pasteFromClipboardBtn = document.getElementById("pasteFromClipboardBtn");
+pasteFromClipboardBtn.addEventListener("click", async () => {
+  try {
+    const clipboardText = await navigator.clipboard.readText();
+    if (clipboardText && clipboardText.trim()) {
+      pasteTextarea.value = clipboardText;
+      flash("📋 Pasted from clipboard!", "success");
+    } else {
+      flash("⚠️ Clipboard is empty", "error");
+    }
+  } catch (err) {
+    flash("❌ Cannot access clipboard. Use Ctrl+V instead.", "error");
+  }
+});
+
 init();
 
 async function init() {
@@ -56,7 +72,12 @@ async function init() {
   ]);
 
   const storedUrl = (data[KEYS.generatorUrl] || "").trim();
-  const migratedUrl = !storedUrl || storedUrl === "http://localhost:5500/curl-generator/index.html"
+  const oldUrls = [
+    "http://localhost:5500/curl-generator/index.html",
+    "https://llm-curl-generator.vercel.app/",
+    "https://llm-curl-generator.vercel.app"
+  ];
+  const migratedUrl = !storedUrl || oldUrls.includes(storedUrl)
     ? DEFAULT_GENERATOR_URL
     : storedUrl;
 

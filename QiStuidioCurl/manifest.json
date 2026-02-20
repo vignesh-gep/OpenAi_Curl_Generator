@@ -19,7 +19,7 @@
   "content_scripts": [
     {
       "matches": [
-        "https://llm-curl-generator.vercel.app/*",
+        "https://openai-curl-generator.vercel.app/*",
         "http://localhost:*/*curl-generator*",
         "http://127.0.0.1:*/*curl-generator*"
       ],

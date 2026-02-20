@@ -25,10 +25,7 @@
     <div class="columns">
       <!-- Left Column - Qi Studio -->
       <div class="column column-qi">
-        <div class="column-header">
-          <span class="column-icon">🎨</span>
-          <span class="column-title">Qi Studio</span>
-        </div>
+        <div class="column-header">Qi Studio</div>
         <div class="column-body">
           <button id="captureToolsBtn" class="capture-btn">
             <span class="btn-icon">📥</span>
@@ -39,7 +36,7 @@
             <span>Paste JSON <small>(manual)</small></span>
           </button>
           <div class="status-box" id="toolsStatusBox">
-            <span id="toolsStatus">Not captured</span>
+            <span id="toolsStatus" class="status-text">Not captured</span>
             <button id="previewToolsBtn" class="preview-btn" style="display:none;">👁️</button>
           </div>
         </div>
@@ -47,10 +44,7 @@
 
       <!-- Right Column - Langfuse -->
       <div class="column column-langfuse">
-        <div class="column-header">
-          <span class="column-icon">📊</span>
-          <span class="column-title">Langfuse</span>
-        </div>
+        <div class="column-header">Langfuse</div>
         <div class="column-body">
           <button id="captureMessagesBtn" class="capture-btn">
             <span class="btn-icon">📥</span>
@@ -61,7 +55,7 @@
             <span>Paste JSON <small>(manual)</small></span>
           </button>
           <div class="status-box" id="messagesStatusBox">
-            <span id="messagesStatus">Not captured</span>
+            <span id="messagesStatus" class="status-text">Not captured</span>
             <button id="previewMessagesBtn" class="preview-btn" style="display:none;">👁️</button>
           </div>
         </div>
@@ -103,7 +97,8 @@
         </div>
         <textarea id="pasteTextarea" placeholder="Paste your JSON array here..."></textarea>
         <div class="modal-footer">
-          <button id="savePasteBtn" class="primary-btn small">Save</button>
+          <button id="pasteFromClipboardBtn" class="secondary-btn small">📋 Paste</button>
+          <button id="savePasteBtn" class="primary-btn small">💾 Save</button>
         </div>
       </div>
     </div>
