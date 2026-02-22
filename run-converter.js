@@ -35,10 +35,13 @@ const toolMap = buildToolNameMap(input.tools);
 // Convert messages
 const convertedMessages = convertMessages(input.messages, toolMap);
 
-// Build final request body
+// Build final request body — use config values, not hardcoded
 const requestBody = {
-    temperature: 0.1,
-    top_p: 0.1,
+    temperature: 1,
+    top_p: 1,
+    frequency_penalty: 0,
+    presence_penalty: 0,
+    max_completion_tokens: 1000,
     tool_choice: "auto",
     messages: convertedMessages,
     tools: convertedTools

@@ -9,15 +9,20 @@
 
 const config = {
     // API Settings
-    apiEndpoint: "https://135.237.31.202/platform2/openai/deployments/gpt-5.2/chat/completions",
+    apiEndpoint: "https://your-endpoint.com/openai/deployments/gpt-5.2/chat/completions",
     apiVersion: "2025-04-01-preview",
     apiKey: "<Your openai key>", // Replace with actual key
-    hostHeader: "openaiqc.gep.com",
+    hostHeader: "your-endpoint.com",
     
     // Model Parameters
-    temperature: 0.1,
-    topP: 0.1,
-    toolChoice: "auto"
+    temperature: 1,
+    topP: 1,
+    toolChoice: "auto",
+    frequencyPenalty: 0,
+    presencePenalty: 0,
+    maxOutputTokens: 1000,
+    reasoningEffort: null,       // Set to "low", "medium", "high" if using reasoning
+    responseFormat: null          // Set to { type: "json_schema", json_schema: {...} } if needed
 };
 
 // ============================================
@@ -87,14 +92,27 @@ const messages = [
 // ============================================
 
 function generateCurl(config, messages, tools) {
-    // Build the request body
+    // Build the request body with ALL parameters
     const requestBody = {
         temperature: config.temperature,
         top_p: config.topP,
+        frequency_penalty: config.frequencyPenalty || 0,
+        presence_penalty: config.presencePenalty || 0,
+        max_completion_tokens: config.maxOutputTokens || 1000,
         tool_choice: config.toolChoice,
         messages: messages,
         tools: tools
     };
+
+    // Add reasoning_effort if configured
+    if (config.reasoningEffort) {
+        requestBody.reasoning_effort = config.reasoningEffort;
+    }
+
+    // Add response_format (structured output) if configured
+    if (config.responseFormat) {
+        requestBody.response_format = config.responseFormat;
+    }
 
     // Convert to JSON string and escape for shell
     const jsonBody = JSON.stringify(requestBody, null, 4);
@@ -103,7 +121,8 @@ function generateCurl(config, messages, tools) {
     const escapedBody = jsonBody.replace(/'/g, "'\\''");
 
     // Build the full URL with query params
-    const fullUrl = `${config.apiEndpoint}?api-version=${config.apiVersion}&api-key=${config.apiKey}`;
+    const separator = config.apiEndpoint.includes('?') ? '&' : '?';
+    const fullUrl = `${config.apiEndpoint}${separator}api-version=${config.apiVersion}&api-key=${config.apiKey}`;
 
     // Generate curl command
     const curlCommand = `curl --location '${fullUrl}' \\
@@ -119,16 +138,30 @@ function generateCurl(config, messages, tools) {
 // ============================================
 
 function generateCurlWithFileRef(config, messages, tools) {
-    // Build the request body
+    // Build the request body with ALL parameters
     const requestBody = {
         temperature: config.temperature,
         top_p: config.topP,
+        frequency_penalty: config.frequencyPenalty || 0,
+        presence_penalty: config.presencePenalty || 0,
+        max_completion_tokens: config.maxOutputTokens || 1000,
         tool_choice: config.toolChoice,
         messages: messages,
         tools: tools
     };
 
-    const fullUrl = `${config.apiEndpoint}?api-version=${config.apiVersion}&api-key=${config.apiKey}`;
+    // Add reasoning_effort if configured
+    if (config.reasoningEffort) {
+        requestBody.reasoning_effort = config.reasoningEffort;
+    }
+
+    // Add response_format (structured output) if configured
+    if (config.responseFormat) {
+        requestBody.response_format = config.responseFormat;
+    }
+
+    const separator = config.apiEndpoint.includes('?') ? '&' : '?';
+    const fullUrl = `${config.apiEndpoint}${separator}api-version=${config.apiVersion}&api-key=${config.apiKey}`;
 
     // For PowerShell - using Invoke-RestMethod
     const powershellCommand = `$body = @'

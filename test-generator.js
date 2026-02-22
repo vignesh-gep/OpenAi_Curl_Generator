@@ -8,13 +8,18 @@
 // CONFIGURATION
 // ============================================
 const CONFIG = {
-    apiEndpoint: "https://135.237.31.202/platform2/openai/deployments/gpt-5.2/chat/completions",
+    apiEndpoint: "https://your-endpoint.com/openai/deployments/gpt-5.2/chat/completions",
     apiVersion: "2025-04-01-preview",
     apiKey: "<Your openai key>", // User will provide this
-    hostHeader: "openaiqc.gep.com",
-    temperature: 0.1,
-    topP: 0.1,
-    toolChoice: "auto"
+    hostHeader: "your-endpoint.com",
+    temperature: 1,
+    topP: 1,
+    toolChoice: "auto",
+    frequencyPenalty: 0,
+    presencePenalty: 0,
+    maxOutputTokens: 1000,
+    reasoningEffort: null,
+    responseFormat: null
 };
 
 // ============================================
@@ -136,13 +141,21 @@ function convertMessageContent(content) {
         return content;
     }
     
-    // If content is an array (KeyStudio format with type/text objects)
+    // If content is an array
     if (Array.isArray(content)) {
-        // Extract text from all text-type objects and join
-        return content
-            .filter(item => item.type === 'text' && item.text)
-            .map(item => item.text)
-            .join('\n');
+        // Preserve text-join only for pure text arrays; stringify mixed arrays to avoid dropping non-text parts.
+        const isPureQiStudioTextArray = content.length > 0 && content.every(
+            item => item && typeof item === 'object' && item.type === 'text' && typeof item.text === 'string'
+        );
+        if (isPureQiStudioTextArray) {
+            return content.map(item => item.text).join('\n');
+        }
+        return JSON.stringify(content);
+    }
+    
+    // If content is an object, stringify it
+    if (content !== null && typeof content === 'object') {
+        return JSON.stringify(content);
     }
     
     // Fallback: convert to string
@@ -161,14 +174,10 @@ function convertMessages(inputMessages) {
     for (const msg of inputMessages) {
         const content = convertMessageContent(msg.content);
         
-        // Skip empty messages
-        if (!content || content.trim() === '') {
-            continue;
-        }
-        
+        // NEVER drop messages — if it has a role, it belongs in the output
         convertedMessages.push({
             role: msg.role,
-            content: content
+            content: content || ''
         });
     }
     
@@ -179,20 +188,34 @@ function convertMessages(inputMessages) {
  * Generate the full request body for OpenAI API
  */
 function generateRequestBody(config, messages, tools) {
-    return {
+    const body = {
         temperature: config.temperature,
         top_p: config.topP,
+        frequency_penalty: config.frequencyPenalty || 0,
+        presence_penalty: config.presencePenalty || 0,
+        max_completion_tokens: config.maxOutputTokens || 1000,
         tool_choice: config.toolChoice,
         messages: messages,
         tools: tools
     };
+
+    if (config.reasoningEffort) {
+        body.reasoning_effort = config.reasoningEffort;
+    }
+
+    if (config.responseFormat) {
+        body.response_format = config.responseFormat;
+    }
+
+    return body;
 }
 
 /**
  * Generate curl command with full body
  */
 function generateCurlCommand(config, requestBody) {
-    const fullUrl = `${config.apiEndpoint}?api-version=${config.apiVersion}&api-key=${config.apiKey}`;
+    const separator = config.apiEndpoint.includes('?') ? '&' : '?';
+    const fullUrl = `${config.apiEndpoint}${separator}api-version=${config.apiVersion}&api-key=${config.apiKey}`;
     
     // Pretty print JSON for readability
     const jsonBody = JSON.stringify(requestBody, null, 4);
@@ -210,7 +233,8 @@ function generateCurlCommand(config, requestBody) {
  * Generate PowerShell command
  */
 function generatePowerShellCommand(config, requestBody) {
-    const fullUrl = `${config.apiEndpoint}?api-version=${config.apiVersion}&api-key=${config.apiKey}`;
+    const separator = config.apiEndpoint.includes('?') ? '&' : '?';
+    const fullUrl = `${config.apiEndpoint}${separator}api-version=${config.apiVersion}&api-key=${config.apiKey}`;
     const jsonBody = JSON.stringify(requestBody, null, 2);
     
     return `$headers = @{

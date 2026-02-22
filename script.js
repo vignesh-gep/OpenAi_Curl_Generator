@@ -125,8 +125,10 @@ function checkWarnings() {
     
     // Check reasoning + temperature conflict
     const reasoningEnabled = document.getElementById('reasoningEnabled')?.checked;
-    const temperature = parseFloat(document.getElementById('temperature')?.value || 0.1);
-    const topP = parseFloat(document.getElementById('topP')?.value || 0.1);
+    const tempWarnVal = parseFloat(document.getElementById('temperature')?.value);
+    const temperature = isNaN(tempWarnVal) ? 1 : tempWarnVal;
+    const topPWarnVal = parseFloat(document.getElementById('topP')?.value);
+    const topP = isNaN(topPWarnVal) ? 1 : topPWarnVal;
     const maxTokens = parseInt(document.getElementById('maxOutputTokens')?.value || 1000);
     
     if (reasoningEnabled) {
@@ -570,10 +572,25 @@ function convertMessageContent(content) {
     
     // If content is an array (Qi Studio format)
     if (Array.isArray(content)) {
-        return content
-            .filter(item => item.type === 'text' && item.text)
-            .map(item => item.text)
-            .join('\n');
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/e93a9f7d-5e92-4dd0-a8c4-71c99bc4a9f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'script.js:convertMessageContent',message:'Array content detected',data:{contentLength:content.length,firstItemType:typeof content[0],isQiStudioFormat:content.length>0&&content[0]&&typeof content[0]==='object'&&content[0].type==='text',contentPreview:JSON.stringify(content).substring(0,200)},timestamp:Date.now(),hypothesisId:'BUG1'})}).catch(()=>{});
+        // #endregion
+        
+        // Check if it's pure Qi Studio text format: every item is {type:'text', text:'...'}
+        const isPureQiStudioTextArray = content.length > 0 && content.every(
+            item => item && typeof item === 'object' && item.type === 'text' && typeof item.text === 'string'
+        );
+
+        if (isPureQiStudioTextArray) {
+            return content.map(item => item.text).join('\n');
+        }
+
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/e93a9f7d-5e92-4dd0-a8c4-71c99bc4a9f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'script.js:convertMessageContent',message:'Mixed/non-text array preserved via JSON.stringify',data:{contentPreview:JSON.stringify(content).substring(0,200)},timestamp:Date.now(),hypothesisId:'H8'})}).catch(()=>{});
+        // #endregion
+
+        // Mixed or non-text array — stringify the entire array to preserve all parts (no drops)
+        return JSON.stringify(content);
     }
     
     // If content is an object (like tool response data), stringify it
@@ -603,6 +620,11 @@ function convertMessages(inputMessages, toolNameMap) {
     
     // Queue to track pending tool_call_ids that need responses
     const pendingToolCallIds = [];
+    let syntheticOrphanToolPairs = 0;
+
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/e93a9f7d-5e92-4dd0-a8c4-71c99bc4a9f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'script.js:convertMessages:entry',message:'Starting message conversion',data:{totalInputMessages:inputMessages.length,allRoles:inputMessages.map((m,idx)=>({idx,role:m.role,contentType:typeof m.content,isArray:Array.isArray(m.content),hasToolCalls:!!m.tool_calls,contentPreview:(typeof m.content==='string'?m.content:JSON.stringify(m.content))?.substring(0,80)}))},timestamp:Date.now(),hypothesisId:'H3_H4_H5'})}).catch(()=>{});
+    // #endregion
 
     for (let i = 0; i < inputMessages.length; i += 1) {
         const msg = inputMessages[i];
@@ -667,24 +689,70 @@ function convertMessages(inputMessages, toolNameMap) {
         }
 
         // SIMPLE LOGIC:
-        // If role is user, assistant, or system → keep as-is
-        // If role is anything else → it's a tool response
+        // If role is user, assistant, system, or developer → keep as-is
+        // If role is tool/function/non-standard → convert to OpenAI-safe tool flow
         
-        const validRoles = new Set(['user', 'assistant', 'system']);
+        const validRoles = new Set(['user', 'assistant', 'system', 'developer']);
         
         if (validRoles.has(msg.role)) {
-            // Valid role - keep as-is
-            // Skip empty messages
+            // Valid role - ALWAYS keep (never drop a message that's in the array)
+            // #region agent log
             if (!content || content.trim() === '') {
-                continue;
+                fetch('http://127.0.0.1:7242/ingest/e93a9f7d-5e92-4dd0-a8c4-71c99bc4a9f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'script.js:convertMessages',message:'KEEPING empty-content message (was previously dropped!)',data:{index:i,role:msg.role,originalContentType:typeof msg.content,isArray:Array.isArray(msg.content),convertedContent:content,originalPreview:JSON.stringify(msg.content).substring(0,200)},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{});
             }
+            // #endregion
             convertedMessages.push({
                 role: msg.role,
-                content: content
+                content: content || ''
             });
+        } else if (msg.role === 'tool' || msg.role === 'function') {
+            // Preserve explicit tool/function responses
+            // 1) keep existing tool_call_id when present
+            // 2) otherwise match pending tool_call_ids
+            // 3) if still unavailable, synthesize assistant+tool pair
+            if (msg.tool_call_id) {
+                convertedMessages.push({
+                    role: 'tool',
+                    tool_call_id: msg.tool_call_id,
+                    content: content || ''
+                });
+            } else if (pendingToolCallIds.length > 0) {
+                const toolCallId = pendingToolCallIds.shift();
+                convertedMessages.push({
+                    role: 'tool',
+                    tool_call_id: toolCallId,
+                    content: content || ''
+                });
+            } else {
+                const syntheticToolCallId = `orphan_call_${Date.now()}_${i}`;
+                const syntheticToolName = 'orphan_tool';
+                syntheticOrphanToolPairs += 1;
+                // #region agent log
+                fetch('http://127.0.0.1:7242/ingest/e93a9f7d-5e92-4dd0-a8c4-71c99bc4a9f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'script.js:convertMessages',message:'EXPLICIT tool/function role without tool_call_id converted to synthetic pair',data:{index:i,originalRole:msg.role,syntheticToolCallId,syntheticToolName,content:content?.substring(0,100)},timestamp:Date.now(),hypothesisId:'H7'})}).catch(()=>{});
+                // #endregion
+                convertedMessages.push({
+                    role: 'assistant',
+                    content: '',
+                    tool_calls: [
+                        {
+                            id: syntheticToolCallId,
+                            type: 'function',
+                            function: {
+                                name: syntheticToolName,
+                                arguments: '{}'
+                            }
+                        }
+                    ]
+                });
+                convertedMessages.push({
+                    role: 'tool',
+                    tool_call_id: syntheticToolCallId,
+                    content: content || ''
+                });
+            }
         } else {
-            // Invalid role (like "get_contracts_by_supplier_name", "store_contract_node", etc.)
-            // This is a tool response - assign pending tool_call_id
+            // Non-standard role (like "get_contracts_by_supplier_name", "store_contract_node", etc.)
+            // This is a tool response - assign pending tool_call_id if available
             if (pendingToolCallIds.length > 0) {
                 const toolCallId = pendingToolCallIds.shift();
                 convertedMessages.push({
@@ -692,10 +760,45 @@ function convertMessages(inputMessages, toolNameMap) {
                     tool_call_id: toolCallId,
                     content: content || ''
                 });
+            } else {
+                // No pending tool_call_id — still KEEP the message (never drop anything)
+                // Keep semantic intent as tool by creating a synthetic assistant tool_call + tool response pair.
+                const syntheticToolCallId = `orphan_call_${Date.now()}_${i}`;
+                const syntheticToolName = String(msg.role || 'orphan_tool').replace(/[^a-zA-Z0-9_]/g, '_');
+                syntheticOrphanToolPairs += 1;
+
+                // #region agent log
+                fetch('http://127.0.0.1:7242/ingest/e93a9f7d-5e92-4dd0-a8c4-71c99bc4a9f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'script.js:convertMessages',message:'ORPHAN tool response converted to synthetic assistant+tool pair',data:{index:i,originalRole:msg.role,syntheticToolCallId,syntheticToolName,content:content?.substring(0,100)},timestamp:Date.now(),hypothesisId:'H6'})}).catch(()=>{});
+                // #endregion
+
+                convertedMessages.push({
+                    role: 'assistant',
+                    content: '',
+                    tool_calls: [
+                        {
+                            id: syntheticToolCallId,
+                            type: 'function',
+                            function: {
+                                name: syntheticToolName,
+                                arguments: '{}'
+                            }
+                        }
+                    ]
+                });
+                convertedMessages.push({
+                    role: 'tool',
+                    tool_call_id: syntheticToolCallId,
+                    content: content || ''
+                });
             }
-            // If no pending tool_call_id, skip this message (orphan response)
         }
     }
+
+    // #region agent log
+    const droppedCount = Math.max(0, inputMessages.length - convertedMessages.length);
+    const expandedBy = Math.max(0, convertedMessages.length - inputMessages.length);
+    fetch('http://127.0.0.1:7242/ingest/e93a9f7d-5e92-4dd0-a8c4-71c99bc4a9f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'script.js:convertMessages:exit',message:'Conversion complete — ZERO DROPS policy',data:{inputCount:inputMessages.length,outputCount:convertedMessages.length,droppedCount,expandedBy,syntheticOrphanToolPairs,outputRoles:convertedMessages.map(m=>m.role),outputContentPreviews:convertedMessages.map((m,idx)=>({idx,role:m.role,hasToolCalls:!!m.tool_calls,contentLen:(m.content||'').length,contentPreview:(m.content||'').substring(0,60)}))},timestamp:Date.now(),hypothesisId:'H3_H4_H5_H6'})}).catch(()=>{});
+    // #endregion
 
     return convertedMessages;
 }
@@ -723,13 +826,23 @@ function getConfig() {
         }
     }
     
+    // #region agent log
+    const rawTemp = document.getElementById('temperature').value;
+    const rawTopP = document.getElementById('topP').value;
+    fetch('http://127.0.0.1:7242/ingest/e93a9f7d-5e92-4dd0-a8c4-71c99bc4a9f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'script.js:getConfig',message:'Raw input values for temperature/topP',data:{rawTemp,rawTopP,parsedTemp:parseFloat(rawTemp),parsedTopP:parseFloat(rawTopP),isNaNTemp:isNaN(parseFloat(rawTemp)),isNaNTopP:isNaN(parseFloat(rawTopP))},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
+    // #endregion
+
+    // Use proper null-safe parsing: only fallback to default 1 if value is empty/NaN
+    const tempVal = parseFloat(document.getElementById('temperature').value);
+    const topPVal = parseFloat(document.getElementById('topP').value);
+
     return {
         apiEndpoint: document.getElementById('apiEndpoint').value || '',
         apiVersion: document.getElementById('apiVersion').value || '2024-02-01',
         apiKey: document.getElementById('apiKey').value || '<Your openai key>',
         hostHeader: document.getElementById('hostHeader').value || 'api.openai.com',
-        temperature: parseFloat(document.getElementById('temperature').value) || 0.1,
-        topP: parseFloat(document.getElementById('topP').value) || 0.1,
+        temperature: isNaN(tempVal) ? 1 : tempVal,
+        topP: isNaN(topPVal) ? 1 : topPVal,
         toolChoice: document.getElementById('toolChoice').value || 'auto',
         frequencyPenalty: parseFloat(document.getElementById('frequencyPenalty').value) || 0,
         presencePenalty: parseFloat(document.getElementById('presencePenalty').value) || 0,
@@ -836,7 +949,8 @@ function generateCurlCommand(config, requestBody) {
         ? config.hostHeader
         : 'your-endpoint.com';
     
-    const fullUrl = `${endpoint}?api-version=${config.apiVersion}&api-key=${apiKey}`;
+    const separator = endpoint.includes('?') ? '&' : '?';
+    const fullUrl = `${endpoint}${separator}api-version=${config.apiVersion}&api-key=${apiKey}`;
     
     // Pretty print JSON
     const jsonBody = JSON.stringify(requestBody, null, 4);
@@ -867,7 +981,8 @@ function generatePowerShellCommand(config, requestBody) {
         ? config.hostHeader
         : 'your-endpoint.com';
     
-    const fullUrl = `${endpoint}?api-version=${config.apiVersion}&api-key=${apiKey}`;
+    const separator = endpoint.includes('?') ? '&' : '?';
+    const fullUrl = `${endpoint}${separator}api-version=${config.apiVersion}&api-key=${apiKey}`;
     const jsonBody = JSON.stringify(requestBody, null, 2);
     
     return `$headers = @{

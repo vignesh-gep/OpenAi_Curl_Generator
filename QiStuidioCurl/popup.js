@@ -63,6 +63,7 @@ pasteFromClipboardBtn.addEventListener("click", async () => {
       }
     }
     
+    
     // Fallback: try execCommand
     const success = document.execCommand('paste');
     if (success && pasteTextarea.value.trim()) {
